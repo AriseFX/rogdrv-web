@@ -1,0 +1,25 @@
+:root {
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: #eef0f4;
+  background: #090a0d;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --red: #f3344a;
+  --red-hot: #ff4a5e;
+  --panel: #101216;
+  --panel-2: #15181e;
+  --line: #252931;
+  --muted: #7f8692;
+  --soft: #b6bbc4;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #090a0d; }
+button, input, select { font: inherit; }
+button, select, input[type="range"], input[type="color"] { cursor: pointer; }
+button:disabled, select:disabled, input:disabled { cursor: not-allowed; opacity: .5; }
+a { color: inherit; }
+#root { min-height: 100vh; }
+::selection { background: #f3344a; color: white; }
