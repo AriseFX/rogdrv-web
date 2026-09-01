@@ -4,6 +4,8 @@
 
 一个基于 React、TypeScript 和 WebHID 的 ASUS ROG 游戏鼠标开源网页配置器。
 
+[打开 ROGDRV Web](https://arisefx.github.io/rogdrv-web/) · 需要桌面版 Chromium 浏览器
+
 ROGDRV Web 通过 Chromium 浏览器直接与受支持的鼠标通信，不需要安装常驻后台程序，也不需要账户。除非你明确将更改写入鼠标板载内存，否则配置数据不会离开当前浏览器会话。
 
 > **当前硬件状态：**首个支持型号是 **ROG Gladius III Wireless AimPoint 36K（战刃 III 无线 AimPoint 36K）**。已使用原装 2.4G 接收器，在鼠标固件 `02.00.11`、接收器固件 `03.00.05` 上完成真实设备读写验证。USB 有线支持已经实现，但仍需要更多实机验证。测试新的固件或连接组合前，请先记录原始配置。

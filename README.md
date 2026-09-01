@@ -4,6 +4,8 @@
 
 A browser-native, open-source configurator for ASUS ROG gaming mice, built with React, TypeScript, and WebHID.
 
+[Open ROGDRV Web](https://arisefx.github.io/rogdrv-web/) · Desktop Chromium browser required
+
 ROGDRV Web talks directly to supported hardware from a Chromium browser. It does not require a background daemon or an account, and configuration data stays in the browser session unless you explicitly write changes to the mouse's onboard memory.
 
 > **Current hardware status:** the first supported device is the **ROG Gladius III Wireless AimPoint 36K**. Read and write operations have been verified with the original 2.4 GHz receiver on mouse firmware `02.00.11` and receiver firmware `03.00.05`. Wired USB support is implemented but still needs broader hardware validation. Record your original configuration before testing a new firmware or connection combination.
