@@ -36,25 +36,6 @@ function actionValue(action: ButtonAction) {
   return `${action.kind}:${action.code}`
 }
 
-type LiveMouseButton = 'left' | 'right' | 'middle' | 'back' | 'forward'
-type LiveWheelDirection = 'scroll-up' | 'scroll-down' | null
-const pointerButtons: Partial<Record<number, LiveMouseButton>> = {
-  0: 'left',
-  1: 'middle',
-  2: 'right',
-  3: 'back',
-  4: 'forward',
-}
-
-const liveButtonLabels: Record<LiveMouseButton, string> = {
-  left: '左键',
-  right: '右键',
-  middle: '中键',
-  back: '后退侧键',
-  forward: '前进侧键',
-}
-
-const formatDelta = (value: number) => value > 0 ? `+${value}` : String(value)
 const DPI_MIN = 100
 const DPI_MAX = 36_000
 const DPI_SLIDER_STEPS = 1000
@@ -79,99 +60,40 @@ function MouseIllustration({
   connected: boolean
   dpiPreset: number | null | undefined
 }) {
-  const [pressed, setPressed] = useState<LiveMouseButton[]>([])
-  const [wheelDirection, setWheelDirection] = useState<LiveWheelDirection>(null)
-  const [motion, setMotion] = useState({ x: 0, y: 0 })
-  const [lastAction, setLastAction] = useState('等待操作')
-
-  useEffect(() => {
-    const handlePointerMove = (event: PointerEvent) => {
-      const x = Math.max(-18, Math.min(18, Math.round(event.movementX)))
-      const y = Math.max(-18, Math.min(18, Math.round(event.movementY)))
-      setMotion({ x, y })
-      setWheelDirection(null)
-      setLastAction(`移动 ${formatDelta(x)} / ${formatDelta(y)}`)
-    }
-    const handlePointerDown = (event: PointerEvent) => {
-      const button = pointerButtons[event.button]
-      if (button === undefined) return
-      setPressed((current) => [...new Set([...current, button])])
-      setWheelDirection(null)
-      setLastAction(`${liveButtonLabels[button]}按下`)
-    }
-    const handlePointerUp = (event: PointerEvent) => {
-      const button = pointerButtons[event.button]
-      if (button === undefined) return
-      setPressed((current) => current.filter((candidate) => candidate !== button))
-      setLastAction(`${liveButtonLabels[button]}释放`)
-    }
-    const handleWheel = (event: WheelEvent) => {
-      const direction = event.deltaY < 0 ? 'scroll-up' : 'scroll-down'
-      setWheelDirection(direction)
-      setLastAction(direction === 'scroll-up' ? '滚轮向上' : '滚轮向下')
-    }
-    const handleContextMenu = (event: MouseEvent) => event.preventDefault()
-
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerdown', handlePointerDown)
-    window.addEventListener('pointerup', handlePointerUp)
-    window.addEventListener('wheel', handleWheel, { passive: true })
-    window.addEventListener('contextmenu', handleContextMenu)
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerdown', handlePointerDown)
-      window.removeEventListener('pointerup', handlePointerUp)
-      window.removeEventListener('wheel', handleWheel)
-      window.removeEventListener('contextmenu', handleContextMenu)
-    }
-  }, [])
-
-  const isPressed = (button: LiveMouseButton) => pressed.includes(button)
-  const modelStyle = {
-    '--motion-x': `${motion.x * 0.28}px`,
-    '--motion-y': `${motion.y * 0.28}px`,
-  } as CSSProperties
-
   return (
     <div className={`mouse-visual ${connected ? 'is-connected' : ''}`}>
       <div className="mouse-stage-grid" />
       <div className="mouse-orbit orbit-one" />
       <div className="mouse-orbit orbit-two" />
-      <div className="mouse-callout callout-left" data-active={isPressed('left')} aria-hidden="true"><b>01</b><span>左键</span></div>
-      <div className="mouse-callout callout-right" data-active={isPressed('right')} aria-hidden="true"><span>右键</span><b>02</b></div>
-      <div className="mouse-callout callout-forward" data-active={isPressed('forward')} aria-hidden="true"><b>05</b><span>前进</span></div>
-      <div className="mouse-callout callout-back" data-active={isPressed('back')} aria-hidden="true"><b>04</b><span>后退</span></div>
-      <div className="mouse-model" data-color="black" style={modelStyle}>
+      <div className="mouse-callout callout-left" aria-hidden="true"><b>01</b><span>左键</span></div>
+      <div className="mouse-callout callout-right" aria-hidden="true"><span>右键</span><b>02</b></div>
+      <div className="mouse-callout callout-forward" aria-hidden="true"><b>05</b><span>前进</span></div>
+      <div className="mouse-callout callout-back" aria-hidden="true"><b>04</b><span>后退</span></div>
+      <div className="mouse-model" data-color="black">
         <div className="mouse-glow" />
         <svg
-          className="interactive-mouse"
+          className="mouse-illustration"
           data-color="black"
           viewBox="0 0 220 360"
           role="img"
-          aria-label="通用游戏鼠标黑色可交互模型"
+          aria-label="通用游戏鼠标黑色示意图"
         >
           <path
             className="mouse-shell"
             d="M110 8C56 8 25 45 25 105V255C25 315 62 352 110 352C158 352 195 315 195 255V105C195 45 164 8 110 8Z"
           />
           <path
-            className="mouse-control mouse-main-button"
-            data-control="left"
-            data-active={isPressed('left')}
+            className="mouse-button-surface mouse-main-button"
             d="M107 11C60 12 29 45 29 104V122H107Z"
           />
           <path
-            className="mouse-control mouse-main-button"
-            data-control="right"
-            data-active={isPressed('right')}
+            className="mouse-button-surface mouse-main-button"
             d="M113 11C160 12 191 45 191 104V122H113Z"
           />
           <path className="mouse-seam" d="M27 122H193M110 9V122" />
           <rect className="mouse-wheel-channel" x="96" y="34" width="28" height="78" rx="14" />
           <rect
-            className="mouse-control mouse-wheel"
-            data-control="middle"
-            data-active={isPressed('middle')}
+            className="mouse-button-surface mouse-wheel"
             x="101"
             y="43"
             width="18"
@@ -186,9 +108,7 @@ function MouseIllustration({
             r="3"
           />
           <rect
-            className="mouse-control mouse-side-button"
-            data-control="forward"
-            data-active={isPressed('forward')}
+            className="mouse-button-surface mouse-side-button"
             x="18"
             y="148"
             width="18"
@@ -196,9 +116,7 @@ function MouseIllustration({
             rx="6"
           />
           <rect
-            className="mouse-control mouse-side-button"
-            data-control="back"
-            data-active={isPressed('back')}
+            className="mouse-button-surface mouse-side-button"
             x="18"
             y="195"
             width="18"
@@ -206,18 +124,6 @@ function MouseIllustration({
             rx="6"
           />
         </svg>
-        <span className="mouse-state" role="img" aria-label="左键实时状态" data-active={isPressed('left')} />
-        <span className="mouse-state" role="img" aria-label="右键实时状态" data-active={isPressed('right')} />
-        <span className="mouse-state" role="img" aria-label="中键实时状态" data-active={isPressed('middle')} />
-        <span className="wheel-feedback wheel-up" role="img" aria-label="滚轮向上实时状态" data-active={wheelDirection === 'scroll-up'}>↑</span>
-        <span className="wheel-feedback wheel-down" role="img" aria-label="滚轮向下实时状态" data-active={wheelDirection === 'scroll-down'}>↓</span>
-        <span className="mouse-state" role="img" aria-label="后退侧键实时状态" data-active={isPressed('back')} />
-        <span className="mouse-state" role="img" aria-label="前进侧键实时状态" data-active={isPressed('forward')} />
-      </div>
-      <div className="live-input" role="status" aria-label="鼠标实时输入">
-        <span><i />实时输入</span>
-        <strong>{lastAction}</strong>
-        <small>X {formatDelta(motion.x)} · Y {formatDelta(motion.y)}</small>
       </div>
     </div>
   )
@@ -248,6 +154,12 @@ function App() {
   const [dpiSelection, setDpiSelection] = useState<{ profileIndex: number, stage: number } | null>(null)
   const [selectedButtonIndex, setSelectedButtonIndex] = useState(0)
   const [buttonActionGroup, setButtonActionGroup] = useState<'mouse' | 'keyboard'>('mouse')
+
+  useEffect(() => {
+    const preventContextMenu = (event: MouseEvent) => event.preventDefault()
+    window.addEventListener('contextmenu', preventContextMenu)
+    return () => window.removeEventListener('contextmenu', preventContextMenu)
+  }, [])
 
   const updateDraft = (updater: (current: ProfileSnapshot) => ProfileSnapshot) => {
     setDraft((current) => (current ? updater(current) : current))

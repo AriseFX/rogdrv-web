@@ -87,22 +87,23 @@ afterEach(() => {
 })
 
 describe('demo mode', () => {
-  it('mirrors pointer movement, buttons, side buttons, and wheel direction on the mouse preview', async () => {
+  it('renders a static mouse overview and keeps page controls compact', async () => {
     window.history.replaceState({}, '', '/?demo=1')
     const { default: App } = await import('./App')
     render(<App />)
 
-    const liveStatus = await screen.findByRole('status', { name: '鼠标实时输入' })
-    expect(liveStatus).toHaveTextContent('等待操作')
-
     expect(screen.queryByRole('button', { name: '显示月耀白鼠标' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '显示黑色鼠标' })).not.toBeInTheDocument()
-    expect(screen.getByRole('img', { name: /黑色可交互模型/ })).toHaveAttribute(
+    expect(await screen.findByRole('img', { name: '通用游戏鼠标黑色示意图' })).toHaveAttribute(
       'data-color',
       'black',
     )
-    expect(document.querySelector('[data-control="forward"]')).toHaveAttribute('y', '148')
-    expect(document.querySelector('[data-control="back"]')).toHaveAttribute('y', '195')
+    const sideButtons = document.querySelectorAll('.mouse-side-button')
+    expect(sideButtons).toHaveLength(2)
+    expect(sideButtons[0]).toHaveAttribute('y', '148')
+    expect(sideButtons[1]).toHaveAttribute('y', '195')
+    expect(document.querySelector('[data-control]')).not.toBeInTheDocument()
+    expect(screen.queryByRole('status', { name: '鼠标实时输入' })).not.toBeInTheDocument()
     expect(screen.queryByText('PROFILE 01')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '性能与控制' })).not.toBeInTheDocument()
     expect(screen.getByText('主 / 接收器固件').parentElement).toHaveTextContent(
@@ -155,42 +156,6 @@ describe('demo mode', () => {
     const contextMenu = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
     window.dispatchEvent(contextMenu)
     expect(contextMenu.defaultPrevented).toBe(true)
-
-    const movement = new Event('pointermove')
-    Object.defineProperties(movement, {
-      movementX: { value: 18 },
-      movementY: { value: -7 },
-    })
-    fireEvent(window, movement)
-    expect(liveStatus).toHaveTextContent('移动 +18 / -7')
-
-    const buttonCases = [
-      { button: 0, name: '左键', control: 'left' },
-      { button: 2, name: '右键', control: 'right' },
-      { button: 1, name: '中键', control: 'middle' },
-      { button: 3, name: '后退侧键', control: 'back' },
-      { button: 4, name: '前进侧键', control: 'forward' },
-    ]
-    for (const { button, name, control } of buttonCases) {
-      fireEvent.pointerDown(window, { button })
-      expect(screen.getByLabelText(`${name}实时状态`)).toHaveAttribute('data-active', 'true')
-      expect(document.querySelector(`[data-control="${control}"]`)).toHaveAttribute('data-active', 'true')
-      expect(liveStatus).toHaveTextContent(`${name}按下`)
-      fireEvent.pointerUp(window, { button })
-      expect(screen.getByLabelText(`${name}实时状态`)).toHaveAttribute('data-active', 'false')
-      expect(document.querySelector(`[data-control="${control}"]`)).toHaveAttribute('data-active', 'false')
-    }
-
-    fireEvent.pointerDown(window, { button: 8 })
-    fireEvent.pointerUp(window, { button: 8 })
-    expect(liveStatus).toHaveTextContent('前进侧键释放')
-
-    fireEvent.wheel(window, { deltaY: -100 })
-    expect(screen.getByLabelText('滚轮向上实时状态')).toHaveAttribute('data-active', 'true')
-    expect(liveStatus).toHaveTextContent('滚轮向上')
-    fireEvent.wheel(window, { deltaY: 100 })
-    expect(screen.getByLabelText('滚轮向下实时状态')).toHaveAttribute('data-active', 'true')
-    expect(liveStatus).toHaveTextContent('滚轮向下')
   })
 
   it('edits and discards every exposed control and shows protocol diagnostics', async () => {

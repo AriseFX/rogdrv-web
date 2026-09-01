@@ -18,7 +18,7 @@ ROGDRV Web talks directly to supported hardware from a Chromium browser. It does
 - Configure `4–32 ms` click debounce and angle snapping.
 - Remap mouse actions and individual keyboard keys.
 - Configure Logo RGB modes, color, and brightness.
-- Mirror pointer movement, left/right/middle clicks, wheel direction, and side-button input on an interactive mouse preview.
+- Show a compact mouse overview with labeled primary and side-button positions.
 - Read firmware versions, the active DPI stage, and raw HID communication logs.
 - Write only changed fields, then commit them to onboard memory once.
 - Detect the writable vendor HID interface exposed by receivers with multiple interfaces.
