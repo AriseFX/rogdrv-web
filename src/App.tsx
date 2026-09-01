@@ -392,7 +392,28 @@ function App() {
             </div>
             <div>
               <span>电量</span>
-              <strong>{battery ? `${battery.percentage}% · ${battery.charging ? '正在充电' : '使用电池'}` : '—'}</strong>
+              <strong
+                className="battery-readout"
+                role="img"
+                aria-label={battery ? `电量 ${battery.percentage}%，${battery.charging ? '正在充电' : '使用电池'}` : '电量不可用'}
+              >
+                {battery ? (
+                  <>
+                    <span
+                      className="battery-icon"
+                      data-level={battery.percentage <= 20 ? 'low' : 'normal'}
+                      data-charging={battery.charging || undefined}
+                      style={{ '--battery-level': `${battery.percentage}%` } as CSSProperties}
+                      aria-hidden="true"
+                    >
+                      <i />
+                      {battery.charging && <b>ϟ</b>}
+                    </span>
+                    <span className="battery-value">{battery.percentage}%</span>
+                    {battery.charging && <small>充电中</small>}
+                  </>
+                ) : '—'}
+              </strong>
             </div>
           </div>
 

@@ -113,7 +113,9 @@ describe('demo mode', () => {
       '01.08.03 / 01.04.02',
     )
     expect(screen.getByText('电量').parentElement).toHaveTextContent('68%')
-    expect(screen.getByText('电量').parentElement).toHaveTextContent('使用电池')
+    expect(screen.getByRole('img', { name: '电量 68%，使用电池' })).toBeInTheDocument()
+    expect(document.querySelector('.battery-icon')).toHaveAttribute('data-level', 'normal')
+    expect(document.querySelector('.battery-icon')).not.toHaveAttribute('data-charging')
     expect(document.querySelector('.content-panel')).toContainElement(
       screen.getByText('ROGDRV WEB · COMMUNITY PROJECT').closest('footer'),
     )
@@ -758,7 +760,7 @@ describe('WebHID connection', () => {
         draft: profile,
         setDraft,
         diagnostics: null,
-        battery: { percentage: 50, charging: true },
+        battery: { percentage: 20, charging: true },
         logs: [],
         error: null,
         busy: false,
@@ -779,7 +781,10 @@ describe('WebHID connection', () => {
     render(<App />)
 
     expect(screen.getAllByText('未知动作 AB')).toHaveLength(2)
-    expect(screen.getByText('电量').parentElement).toHaveTextContent('50% · 正在充电')
+    expect(screen.getByText('电量').parentElement).toHaveTextContent('20%充电中')
+    expect(screen.getByRole('img', { name: '电量 20%，正在充电' })).toBeInTheDocument()
+    expect(document.querySelector('.battery-icon')).toHaveAttribute('data-level', 'low')
+    expect(document.querySelector('.battery-icon')).toHaveAttribute('data-charging', 'true')
     expect(screen.getByText('保留')).toBeInTheDocument()
     expect(screen.getByText('未知模式')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '选择 DPI 档位 1' }))

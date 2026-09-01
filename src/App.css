@@ -208,6 +208,14 @@
 .device-meta div + div { border-left: 1px solid var(--line); }
 .device-meta span { color: #747c88; font-size: 10px; }
 .device-meta strong { color: #dce0e6; font-size: 11px; }
+.battery-readout { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.device-meta .battery-icon { --battery-level: 0%; position: relative; width: 25px; height: 12px; display: block; flex: none; padding: 2px; border: 1px solid #68717e; border-radius: 3px; }
+.device-meta .battery-icon::after { content: ""; position: absolute; left: calc(100% + 2px); top: 3px; width: 2px; height: 6px; border-radius: 0 2px 2px 0; background: #68717e; }
+.device-meta .battery-icon > i { display: block; width: var(--battery-level); height: 100%; max-width: 100%; border-radius: 1px; background: #62d591; box-shadow: 0 0 7px rgba(98, 213, 145, .36); }
+.device-meta .battery-icon[data-level="low"] > i { background: #e48364; box-shadow: 0 0 7px rgba(228, 131, 100, .36); }
+.device-meta .battery-icon > b { position: absolute; inset: -2px 0 0; display: grid; place-items: center; color: white; font-size: 10px; line-height: 1; text-shadow: 0 1px 3px #000; }
+.device-meta .battery-value { color: #e4e8ed; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.device-meta .battery-readout small { overflow: hidden; color: #83dca2; font-size: 9px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
 .profile-nav { margin-top: 13px; }
 .section-label > span { color: #d9dde3; font-size: 12px; font-weight: 750; }
 .section-label small { color: #68707c; font-size: 9px; letter-spacing: 1.3px; }
