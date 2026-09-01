@@ -13,6 +13,14 @@ export interface FirmwareVersion {
   build: number
 }
 
+export interface RgbColor {
+  r: number
+  g: number
+  b: number
+}
+
+export type DpiColors = [RgbColor, RgbColor, RgbColor, RgbColor]
+
 export interface ProfileInfo {
   profileIndex: number
   dpiPreset: number | null
@@ -45,19 +53,17 @@ export interface ButtonBinding {
 export interface LedSettings {
   mode: number
   brightness: number
-  color: {
-    r: number
-    g: number
-    b: number
-  }
+  color: RgbColor
 }
 
 export interface ProfileSnapshot {
   profileIndex: number
   dpiPreset: number | null
+  dpiPresetCount: number
   primaryFirmware: FirmwareVersion
   secondaryFirmware: FirmwareVersion
   performance: PerformanceSettings
+  dpiColors: DpiColors
   buttons: ButtonBinding[]
   led: LedSettings
 }

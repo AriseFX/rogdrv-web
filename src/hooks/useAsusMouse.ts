@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SUPPORTED_DEVICES } from '../protocol/asus/constants'
 import { AsusMouse } from '../protocol/asus/mouse'
+import { VirtualAsusDevice } from '../protocol/asus/simulator'
 import { AsusHidTransport } from '../protocol/asus/transport'
 import type {
   ProfileSnapshot,
@@ -12,11 +13,21 @@ import type {
 type ConnectionState = 'idle' | 'connecting' | 'connected' | 'unsupported'
 
 const demoMode = new URLSearchParams(window.location.search).has('demo')
+const demoMouse = demoMode ? new AsusMouse(new VirtualAsusDevice()) : null
 const demoStartedAt = Date.now()
+const demoDiagnostics: TransportDiagnostics = {
+  productName: 'ROG Gladius III Wireless AimPoint (Demo)',
+  vendorId: 0x0b05,
+  productId: 0x1a70,
+  reportId: 0,
+  collectionCount: 1,
+  vendorCollections: ['0xff01:0x0001'],
+}
 
 const makeDemoProfile = (profileIndex = 0): ProfileSnapshot => ({
   profileIndex,
   dpiPreset: 1,
+  dpiPresetCount: 2,
   primaryFirmware: { major: 1, minor: 8, build: 3 },
   secondaryFirmware: { major: 1, minor: 4, build: 2 },
   performance: {
@@ -25,6 +36,12 @@ const makeDemoProfile = (profileIndex = 0): ProfileSnapshot => ({
     debounce: 12,
     angleSnapping: false,
   },
+  dpiColors: [
+    { r: 0xff, g: 0x00, b: 0x00 },
+    { r: 0xc1, g: 0x00, b: 0xff },
+    { r: 0x00, g: 0x3d, b: 0xff },
+    { r: 0x31, g: 0xff, b: 0x00 },
+  ],
   buttons: [
     { index: 0, sourceCode: 0xf0, sourceLabel: '左键', action: { kind: 'mouse', code: 0xf0, label: '左键' } },
     { index: 1, sourceCode: 0xf1, sourceLabel: '右键', action: { kind: 'mouse', code: 0xf1, label: '右键' } },
@@ -35,7 +52,7 @@ const makeDemoProfile = (profileIndex = 0): ProfileSnapshot => ({
     { index: 6, sourceCode: 0xe8, sourceLabel: '滚轮向上', action: { kind: 'mouse', code: 0xe8, label: '滚轮向上' } },
     { index: 7, sourceCode: 0xe9, sourceLabel: '滚轮向下', action: { kind: 'mouse', code: 0xe9, label: '滚轮向下' } },
   ],
-  led: { mode: 0, brightness: 4, color: { r: 243, g: 52, b: 74 } },
+  led: { mode: 0, brightness: 100, color: { r: 243, g: 52, b: 74 } },
 })
 
 const isSupported = (device: HIDDevice) =>
@@ -51,6 +68,9 @@ const definitionFor = (device: HIDDevice) =>
   )
 
 export function useAsusMouse() {
+  const transportRef = useRef<AsusHidTransport | null>(null)
+  const mouseRef = useRef<AsusMouse | null>(demoMouse)
+
   const initialDemoProfile = demoMode ? makeDemoProfile() : null
   const [connectionState, setConnectionState] = useState<ConnectionState>(
     demoMode ? 'connected' : 'hid' in navigator ? 'idle' : 'unsupported',
@@ -63,22 +83,13 @@ export function useAsusMouse() {
     initialDemoProfile ? structuredClone(initialDemoProfile) : null,
   )
   const [diagnostics, setDiagnostics] = useState<TransportDiagnostics | null>(
-    demoMode ? {
-      productName: 'ROG Gladius III Wireless AimPoint (Demo)',
-      vendorId: 0x0b05,
-      productId: 0x1a70,
-      reportId: 0,
-      collectionCount: 1,
-      vendorCollections: ['0xff01:0x0001'],
-    } : null,
+    demoMode ? demoDiagnostics : null,
   )
   const [logs, setLogs] = useState<TransportLogEntry[]>(
     demoMode ? [{ direction: 'info', message: '演示模式：未连接真实硬件', timestamp: demoStartedAt }] : [],
   )
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const transportRef = useRef<AsusHidTransport | null>(null)
-  const mouseRef = useRef<AsusMouse | null>(null)
 
   const connected = connectionState === 'connected'
   const dirty = useMemo(
@@ -92,7 +103,7 @@ export function useAsusMouse() {
 
   const resetConnection = useCallback(() => {
     transportRef.current = null
-    mouseRef.current = null
+    if (!demoMode) mouseRef.current = null
     setConnectionState('idle')
     setDeviceDefinition(null)
     setProfile(null)
@@ -101,11 +112,27 @@ export function useAsusMouse() {
     setBusy(false)
   }, [])
 
+  const openDemoDevice = useCallback(async () => {
+    const mouse = mouseRef.current!
+    setConnectionState('connecting')
+    setError(null)
+    const snapshot = await mouse.readCurrentProfile()
+    setDeviceDefinition(SUPPORTED_DEVICES[0])
+    setProfile(snapshot)
+    setDraft(structuredClone(snapshot))
+    setDiagnostics(demoDiagnostics)
+    appendLog({
+      direction: 'info',
+      message: '演示模式：虚拟鼠标已连接',
+      timestamp: Date.now(),
+    })
+    setConnectionState('connected')
+    return true
+  }, [appendLog])
+
   const openDevice = useCallback(
     async (device: HIDDevice) => {
       setConnectionState('connecting')
-      setError(null)
-      setLogs([])
       try {
         if (!device.opened) await device.open()
         const transport = new AsusHidTransport(device, appendLog)
@@ -118,39 +145,81 @@ export function useAsusMouse() {
         setProfile(snapshot)
         setDraft(structuredClone(snapshot))
         setConnectionState('connected')
+        return null
       } catch (cause) {
-        await transportRef.current?.close().catch(() => undefined)
+        if (transportRef.current?.device === device) {
+          await transportRef.current.close().catch(() => undefined)
+        } else if (device.opened) {
+          await device.close().catch(() => undefined)
+        }
         resetConnection()
-        setError(cause instanceof Error ? cause.message : String(cause))
+        return cause instanceof Error ? cause.message : String(cause)
       }
     },
     [appendLog, resetConnection],
   )
 
+  const openFirstCompatibleDevice = useCallback(
+    async (devices: HIDDevice[], reportError = true) => {
+      setError(null)
+      setLogs([])
+      let firstError: string | null = null
+      for (const device of devices) {
+        const deviceError = await openDevice(device)
+        if (deviceError === null) return true
+        firstError ??= deviceError
+      }
+      if (firstError !== null && reportError) setError(firstError)
+      return false
+    },
+    [openDevice],
+  )
+
   const connect = useCallback(async () => {
+    if (demoMode) {
+      await openDemoDevice()
+      return
+    }
     if (!('hid' in navigator)) return
     setError(null)
     try {
       const devices = await navigator.hid.requestDevice({
         filters: SUPPORTED_DEVICES.map(({ vendorId, productId }) => ({ vendorId, productId })),
       })
-      if (devices[0]) await openDevice(devices[0])
+      await openFirstCompatibleDevice(devices)
     } catch (cause) {
       setConnectionState('idle')
       if (cause instanceof DOMException && cause.name === 'NotFoundError') return
       setError(cause instanceof Error ? cause.message : String(cause))
     }
-  }, [openDevice])
+  }, [openDemoDevice, openFirstCompatibleDevice])
 
   const reconnect = useCallback(async () => {
-    if (demoMode) return true
+    if (demoMode) return openDemoDevice()
     if (!('hid' in navigator)) return false
     const devices = await navigator.hid.getDevices()
-    const known = devices.find(isSupported)
-    if (!known) return false
-    await openDevice(known)
-    return true
-  }, [openDevice])
+    return openFirstCompatibleDevice(devices.filter(isSupported))
+  }, [openDemoDevice, openFirstCompatibleDevice])
+
+  useEffect(() => {
+    if (demoMode || !('hid' in navigator)) return
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      void navigator.hid.getDevices()
+        .then(async (devices) => {
+          if (cancelled) return
+          const supportedDevices = devices.filter(isSupported)
+          if (supportedDevices.length === 0) return
+          await openFirstCompatibleDevice(supportedDevices, false)
+        })
+        .catch(() => undefined)
+    }, 0)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [openFirstCompatibleDevice])
 
   const disconnect = useCallback(async () => {
     await transportRef.current?.close().catch(() => undefined)
@@ -158,12 +227,6 @@ export function useAsusMouse() {
   }, [resetConnection])
 
   const switchProfile = useCallback(async (index: number) => {
-    if (demoMode) {
-      const snapshot = makeDemoProfile(index)
-      setProfile(snapshot)
-      setDraft(structuredClone(snapshot))
-      return
-    }
     if (!mouseRef.current) return
     setBusy(true)
     setError(null)
@@ -179,17 +242,13 @@ export function useAsusMouse() {
   }, [])
 
   const apply = useCallback(async () => {
-    if (!profile || !draft) return
-    if (demoMode) {
-      setProfile(structuredClone(draft))
-      return
-    }
-    if (!mouseRef.current) return
+    const mouse = mouseRef.current
+    if (!profile || !draft || !mouse) return
     setBusy(true)
     setError(null)
     try {
-      await mouseRef.current.applyChanges(profile, draft)
-      const snapshot = await mouseRef.current.readCurrentProfile()
+      await mouse.applyChanges(profile, draft)
+      const snapshot = await mouse.readCurrentProfile()
       setProfile(snapshot)
       setDraft(structuredClone(snapshot))
     } catch (cause) {
@@ -206,7 +265,9 @@ export function useAsusMouse() {
   useEffect(() => {
     if (!('hid' in navigator)) return
     const handleDisconnect = (event: HIDConnectionEvent) => {
-      if (transportRef.current?.device === event.device) {
+      const transport = transportRef.current
+      if (transport?.device === event.device) {
+        void transport.close().catch(() => undefined)
         resetConnection()
         setError('鼠标已断开连接')
       }

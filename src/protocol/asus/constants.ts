@@ -56,7 +56,7 @@ export const MOUSE_ACTIONS: ButtonAction[] = [
   { kind: 'mouse', code: 0xe7, label: 'DPI 临时切换' },
   { kind: 'mouse', code: 0xe8, label: '滚轮向上' },
   { kind: 'mouse', code: 0xe9, label: '滚轮向下' },
-  { kind: 'disabled', code: 0xff, label: '禁用' },
+  { kind: 'disabled', code: 0x00, label: '禁用' },
 ]
 
 const letterKeys = Array.from({ length: 26 }, (_, index): ButtonAction => ({
@@ -100,6 +100,7 @@ export const KEYBOARD_ACTIONS: ButtonAction[] = [
 export const BUTTON_ACTIONS = [...MOUSE_ACTIONS, ...KEYBOARD_ACTIONS]
 
 export const LED_MODES = [
+  { value: 0xf0, label: '关闭' },
   { value: 0, label: '常亮' },
   { value: 1, label: '呼吸' },
   { value: 2, label: '色彩循环' },

@@ -10,14 +10,23 @@ import {
 import type {
   ButtonAction,
   ButtonBinding,
+  DpiColors,
   FirmwareVersion,
   LedSettings,
   PerformanceSettings,
   ProfileInfo,
+  RgbColor,
 } from './types'
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value))
+
+export class AsusCommandRejectedError extends Error {
+  constructor() {
+    super('鼠标拒绝了命令；设备可能正在休眠、断开，或被奥创占用')
+    this.name = 'AsusCommandRejectedError'
+  }
+}
 
 export function makeRequest(command: number, configure?: (packet: Uint8Array) => void) {
   const packet = new Uint8Array(ASUS_PACKET_SIZE)
@@ -36,7 +45,7 @@ export function responseCode(response: Uint8Array) {
 export function assertSuccessfulResponse(response: Uint8Array) {
   const code = responseCode(response)
   if (code === ASUS_STATUS_ERROR || code === 0xffaa) {
-    throw new Error('鼠标拒绝了命令；设备可能正在休眠、断开，或被奥创占用')
+    throw new AsusCommandRejectedError()
   }
   return response
 }
@@ -49,28 +58,56 @@ const firmware = (major: number, minor: number, build: number): FirmwareVersion 
 
 export function parseProfileInfo(response: Uint8Array): ProfileInfo {
   assertSuccessfulResponse(response)
-  if (response.byteLength < 16) {
+  if (response.byteLength < 17) {
     throw new Error('配置档信息不完整')
   }
 
   return {
     profileIndex: response[10],
     dpiPreset: response[11] === 0 ? null : response[11] - 1,
-    primaryFirmware: firmware(response[15], response[14], response[13]),
+    primaryFirmware: firmware(response[16], response[15], response[14]),
     secondaryFirmware: firmware(response[6], response[5], response[4]),
   }
 }
 
-export function parsePerformance(response: Uint8Array): PerformanceSettings {
+export function parsePerformance(
+  response: Uint8Array,
+  separateDpiResponse?: Uint8Array,
+): PerformanceSettings {
   assertSuccessfulResponse(response)
   if (response.byteLength < 18) {
     throw new Error('性能配置数据不完整')
   }
 
   const view = new DataView(response.buffer, response.byteOffset, response.byteLength)
-  const dpi = Array.from({ length: 4 }, (_, index) =>
-    view.getUint16(4 + index * 2, true) * 50 + 50,
-  ) as [number, number, number, number]
+  let encodedDpi: [number, number, number, number]
+  if (separateDpiResponse) {
+    assertSuccessfulResponse(separateDpiResponse)
+    if (separateDpiResponse.byteLength < 20) {
+      throw new Error('独立 X/Y DPI 数据不完整')
+    }
+    const dpiView = new DataView(
+      separateDpiResponse.buffer,
+      separateDpiResponse.byteOffset,
+      separateDpiResponse.byteLength,
+    )
+    encodedDpi = Array.from({ length: 4 }, (_, index) => {
+      const x = dpiView.getUint16(4 + index * 4, true)
+      const y = dpiView.getUint16(6 + index * 4, true)
+      if (x !== y) {
+        throw new Error('检测到独立 X/Y DPI；当前设备模型不能安全地把两轴合并写回')
+      }
+      return x
+    }) as [number, number, number, number]
+  } else {
+    encodedDpi = Array.from({ length: 4 }, (_, index) =>
+      view.getUint16(4 + index * 2, true),
+    ) as [number, number, number, number]
+    if (encodedDpi.every((value) => value === 0xffff)) {
+      throw new Error('鼠标要求使用独立 X/Y DPI 查询')
+    }
+  }
+  const dpi = encodedDpi.map((value) => value * 50 + 50) as [number, number, number, number]
   const rateId = view.getUint16(12, true) & 0x07
   const debounceId = response[14]
 
@@ -82,9 +119,25 @@ export function parsePerformance(response: Uint8Array): PerformanceSettings {
   }
 }
 
+export function parseDpiColors(response: Uint8Array): DpiColors {
+  assertSuccessfulResponse(response)
+  if (response.byteLength < 16) {
+    throw new Error('DPI 指示颜色数据不完整')
+  }
+
+  return Array.from({ length: 4 }, (_, index) => {
+    const offset = 4 + index * 3
+    return {
+      r: response[offset],
+      g: response[offset + 1],
+      b: response[offset + 2],
+    }
+  }) as DpiColors
+}
+
 function resolveAction(actionCode: number, actionType: number): ButtonAction {
-  if (actionCode === 0xff) {
-    return { kind: 'disabled', code: actionCode, label: '禁用' }
+  if ((actionCode === 0 && actionType === 0) || actionCode === 0xff) {
+    return { kind: 'disabled', code: 0, label: '禁用' }
   }
   if (actionType !== 0 && actionType !== 1) {
     return {
@@ -127,7 +180,7 @@ export function parseLed(response: Uint8Array): LedSettings {
 
   return {
     mode: response[4],
-    brightness: clamp(response[5], 0, 4),
+    brightness: clamp(response[5], 0, 100),
     color: {
       r: response[6],
       g: response[7],
@@ -140,8 +193,10 @@ export function buildGetProfileRequest() {
   return makeRequest(ASUS_COMMAND.getProfile)
 }
 
-export function buildGetSettingsRequest() {
-  return makeRequest(ASUS_COMMAND.getSettings)
+export function buildGetSettingsRequest(section = 0) {
+  return makeRequest(ASUS_COMMAND.getSettings, (packet) => {
+    packet[2] = section
+  })
 }
 
 export function buildGetButtonsRequest() {
@@ -161,15 +216,33 @@ export function buildSetProfileRequest(index: number) {
 }
 
 export function normalizeDpi(dpi: number) {
-  return clamp(Math.round(dpi / 100) * 100, 100, 36_000)
+  if (Number.isNaN(dpi)) return 100
+  return clamp(Math.round(dpi / 50) * 50, 100, 36_000)
 }
 
-export function buildSetDpiRequest(index: number, dpi: number) {
+export function buildSetDpiRequest(index: number, dpi: number, color: RgbColor) {
   return makeRequest(ASUS_COMMAND.setSetting, (packet) => {
     const encodedDpi = Math.round((normalizeDpi(dpi) - 50) / 50)
     packet[2] = clamp(Math.round(index), 0, 3)
     packet[4] = encodedDpi & 0xff
     packet[5] = (encodedDpi >> 8) & 0xff
+    packet[6] = clamp(Math.round(color.r), 0, 255)
+    packet[7] = clamp(Math.round(color.g), 0, 255)
+    packet[8] = clamp(Math.round(color.b), 0, 255)
+  })
+}
+
+export function buildSetDpiPresetRequest(index: number) {
+  return makeRequest(ASUS_COMMAND.setSetting, (packet) => {
+    packet[2] = 9
+    packet[4] = clamp(Math.round(index), 0, 3) + 1
+  })
+}
+
+export function buildSetDpiPresetCountRequest(count: number) {
+  return makeRequest(ASUS_COMMAND.setSetting, (packet) => {
+    packet[2] = 10
+    packet[4] = clamp(Math.round(count), 2, 4)
   })
 }
 
@@ -204,7 +277,7 @@ export function buildSetButtonRequest(sourceCode: number, action: ButtonAction) 
     packet[4] = sourceCode
     packet[5] = 1
     packet[6] = action.code
-    packet[7] = action.kind === 'keyboard' ? 0 : 1
+    packet[7] = action.kind === 'mouse' ? 1 : 0
   })
 }
 
@@ -212,7 +285,7 @@ export function buildSetLedRequest(settings: LedSettings, index = 0) {
   return makeRequest(ASUS_COMMAND.setLed, (packet) => {
     packet[2] = index
     packet[4] = settings.mode
-    packet[5] = clamp(Math.round(settings.brightness), 0, 4)
+    packet[5] = clamp(Math.round(settings.brightness), 0, 100)
     packet[6] = clamp(Math.round(settings.color.r), 0, 255)
     packet[7] = clamp(Math.round(settings.color.g), 0, 255)
     packet[8] = clamp(Math.round(settings.color.b), 0, 255)

@@ -1,88 +1,137 @@
 # ROGDRV Web
 
-一个基于 React、TypeScript 和 WebHID 的华硕 ROG 鼠标开源网页配置器。首个支持型号是 **ROG Gladius III Wireless AimPoint 36K（战刃 III 无线 AimPoint 36K）**。
+**English** · [简体中文](README.zh-CN.md)
 
-> 当前状态：协议移植、单元测试和浏览器界面已经完成，但仍需要在真实鼠标上验证各固件版本。首次使用时建议先记录原配置，并从读取、切换 DPI 等低风险操作开始。
+A browser-native, open-source configurator for ASUS ROG gaming mice, built with React, TypeScript, and WebHID.
 
-## 支持范围
+ROGDRV Web talks directly to supported hardware from a Chromium browser. It does not require a background daemon or an account, and configuration data stays in the browser session unless you explicitly write changes to the mouse's onboard memory.
 
-| 连接方式 | VID:PID | 状态 |
-| --- | --- | --- |
-| USB 有线 | `0b05:1a70` | 已实现，待实机验证 |
-| 2.4G 原装接收器 | `0b05:1a72` | 已实现，待实机验证 |
-| 蓝牙 | `0b05:1a74` | 暂不支持 |
+> **Current hardware status:** the first supported device is the **ROG Gladius III Wireless AimPoint 36K**. Read and write operations have been verified with the original 2.4 GHz receiver on mouse firmware `02.00.11` and receiver firmware `03.00.05`. Wired USB support is implemented but still needs broader hardware validation. Record your original configuration before testing a new firmware or connection combination.
 
-已实现功能：
+## Highlights
 
-- 5 个板载配置档切换
-- 4 档 DPI，范围 `100–36,000`，步进 `100`
-- `125 / 250 / 500 / 1000 Hz` 回报率
-- `4–32 ms` 按键去抖
-- 直线修正（Angle Snapping）
-- 鼠标动作及单键键盘映射
-- Logo RGB 模式、颜色和亮度
-- 固件版本、当前 DPI 档位和原始 HID 通信日志
-- 只写入发生变化的字段，最后单次提交到板载内存
+- Switch between five onboard profiles.
+- Configure two to four DPI stages from `100` to `36,000` DPI in steps of `50`, with an independent indicator color for each stage.
+- Select `125 / 250 / 500 / 1000 Hz` polling rates.
+- Configure `4–32 ms` click debounce and angle snapping.
+- Remap mouse actions and individual keyboard keys.
+- Configure Logo RGB modes, color, and brightness.
+- Mirror pointer movement, left/right/middle clicks, wheel direction, and side-button input on an interactive mouse preview.
+- Read firmware versions, the active DPI stage, and raw HID communication logs.
+- Write only changed fields, then commit them to onboard memory once.
+- Detect the writable vendor HID interface exposed by receivers with multiple interfaces.
+- Reconnect previously authorized devices after a refresh without reopening the permission picker.
+- Detect the enabled DPI-stage count for every onboard profile and preserve it during writes.
 
-本项目**不提供固件升级**，也不会尝试访问鼠标的 DFU 模式。
+ROGDRV Web deliberately **does not provide firmware updates** and never attempts to access a mouse's DFU mode.
 
-## 本地运行
+## Compatibility
 
-需要 Node.js 20.19+ 或 22.12+，以及支持 WebHID 的桌面 Chromium 浏览器（Chrome、Edge、Brave 等）。
+| Device | Connection | VID:PID | Status |
+| --- | --- | --- | --- |
+| ROG Gladius III Wireless AimPoint 36K | Original 2.4 GHz receiver | `0b05:1a72` | Hardware verified on `02.00.11 / 03.00.05` |
+| ROG Gladius III Wireless AimPoint 36K | Wired USB | `0b05:1a70` | Implemented; hardware validation needed |
+| ROG Gladius III Wireless AimPoint 36K | Bluetooth | `0b05:1a74` | Not supported |
+
+Firmware and regional hardware revisions may behave differently even when a product name matches. Treat unlisted combinations as unverified.
+
+## Roadmap: every ROG mouse
+
+The long-term goal of ROGDRV Web is to support **every ASUS ROG mouse** in one consistent browser interface.
+
+The protocol layer is intentionally separated from the UI so support can grow model by model without duplicating the application. Future work will focus on:
+
+- adding device definitions and protocol variations for the complete ROG mouse lineup;
+- validating wired and 2.4 GHz behavior across firmware revisions;
+- modelling model-specific controls without sacrificing the shared interface;
+- expanding safe read/write fixtures and real-device regression coverage;
+- documenting repeatable steps for contributors to identify and validate new devices.
+
+This is a direction, not a claim of current compatibility. Models not listed in the compatibility table are not supported yet.
+
+## Run locally
+
+Requirements:
+
+- Node.js `20.19+` or `22.12+`;
+- a desktop Chromium browser with WebHID support, such as Chrome, Edge, or Brave.
 
 ```bash
 npm install
 npm run dev
 ```
 
-打开终端显示的 `http://localhost:5173`。WebHID 只能在 HTTPS 或 localhost 安全上下文中使用，不能直接双击 `index.html`。
+Open the `http://localhost:5173` URL printed by Vite. WebHID requires HTTPS or a localhost secure context; opening `index.html` directly will not work.
 
-没有鼠标时，可以访问 `http://localhost:5173/?demo=1` 预览完整配置界面；演示模式不会访问任何硬件。
+### Demo mode
 
-使用前：
+No supported mouse is required to explore the complete interface:
 
-1. 完全退出 Armoury Crate（奥创）。
-2. 使用 USB 有线或原装 2.4G 接收器连接鼠标。
-3. 点击“授权并连接”，在浏览器弹窗中选择鼠标。
-4. 修改配置后点击“应用到设备”，才会写入板载内存。
+```text
+http://localhost:5173/?demo=1
+```
 
-## 开发命令
+Demo mode uses the production ASUS command codec and mouse transaction layer with a virtual HID device. It supports five independent profiles, edits, apply, profile switching, disconnect, and reconnect without touching WebHID or physical hardware. Refreshing resets the simulator to its defaults.
+
+## Use with a mouse
+
+1. Fully exit Armoury Crate so it does not compete for the HID interface.
+2. Connect the mouse over wired USB or its original 2.4 GHz receiver.
+3. Select **Authorize and connect**, then choose the mouse in the browser picker.
+4. Review your changes and select **Apply to device** to write onboard memory.
+
+Do not experiment with an unsupported device or unknown firmware unless you can restore its original configuration.
+
+## Development
 
 ```bash
 npm run test
+npm run test:coverage
 npm run lint
 npm run build
 npm run preview
 ```
 
-## 技术说明
+The automated suite covers four public boundaries: ASUS packet encoding/decoding, mouse read/write transactions, WebHID transport, and React user interactions. Business source files have a `100%` statement, branch, function, and line coverage threshold. Type-only declarations and the application entry point are excluded from the business-logic threshold.
 
-项目使用 64 字节 ASUS HID Input/Output Report，而不是 Feature Report。核心命令包括：
+The virtual device exercises all implemented commands and error paths, but it cannot replace validation against real USB/2.4 GHz hardware, firmware differences, or power-cycle persistence.
 
-| 命令 | 值 | 用途 |
+## Protocol notes
+
+ROGDRV Web uses 64-byte ASUS HID Input/Output Reports rather than Feature Reports.
+
+| Command | Value | Purpose |
 | --- | --- | --- |
-| `GET_PROFILE` | `0x0012` | 当前配置档和固件信息 |
-| `GET_LED` | `0x0312` | 灯效 |
-| `GET_SETTINGS` | `0x0412` | DPI、回报率、去抖、直线修正 |
-| `GET_BUTTONS` | `0x0512` | 按键映射 |
-| `SET_PROFILE` | `0x0250` | 切换配置档 |
-| `SAVE` | `0x0350` | 提交到板载内存 |
-| `SET_BUTTON` | `0x2151` | 设置按键 |
-| `SET_LED` | `0x2851` | 设置灯效 |
-| `SET_SETTING` | `0x3151` | 设置性能参数 |
+| `GET_PROFILE` | `0x0012` | Active profile and firmware information |
+| `GET_LED` | `0x0312` | Lighting configuration |
+| `GET_SETTINGS` | `0x0412` | DPI, indicator colors, polling rate, debounce, and angle snapping |
+| `GET_BUTTONS` | `0x0512` | Button mappings |
+| `SET_PROFILE` | `0x0250` | Switch onboard profile |
+| `SAVE` | `0x0350` | Commit changes to onboard memory |
+| `SET_BUTTON` | `0x2151` | Set a button mapping |
+| `SET_LED` | `0x2851` | Set lighting configuration |
+| `SET_SETTING` | `0x3151` | Set a performance field |
 
-协议实现位于 [`src/protocol/asus`](src/protocol/asus)，React 设备状态位于 [`src/hooks/useAsusMouse.ts`](src/hooks/useAsusMouse.ts)。
+The protocol implementation lives in [`src/protocol/asus`](src/protocol/asus), and React device state lives in [`src/hooks/useAsusMouse.ts`](src/hooks/useAsusMouse.ts).
 
-## 上游与致谢
+## Contributing device support
 
-ASUS HID 协议移植自以下 MIT 许可证代码：
+Reports from additional ROG mouse owners are welcome. When opening an issue, include the exact product name, connection method, VID:PID, mouse and receiver firmware versions, and whether Armoury Crate was fully closed. Do not publish device serial numbers or other personal identifiers.
 
-- [libratbag/libratbag](https://github.com/libratbag/libratbag)，`src/asus.c`、`src/asus.h` 和 `src/driver-asus.c`
-- [kyokenn/ratbag-python](https://github.com/kyokenn/ratbag-python)，`ratbag/drivers/asus.py`
-- [kyokenn/rogdrv](https://github.com/kyokenn/rogdrv)，原始 Linux 用户态配置工具
+Changes that add a device or protocol variation should include simulator coverage and tests for read, changed-field writes, save behavior, and failure recovery.
 
-完整声明见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。本项目与 ASUS、ROG 没有官方关联，产品名称仅用于说明兼容性。
+## Credits
 
-## 许可证
+The ASUS HID protocol was ported from MIT-licensed work in:
 
-本项目采用 [GNU GPL v3](LICENSE)。
+- [libratbag/libratbag](https://github.com/libratbag/libratbag), including `src/asus.c`, `src/asus.h`, and `src/driver-asus.c`;
+- [kyokenn/ratbag-python](https://github.com/kyokenn/ratbag-python), including `ratbag/drivers/asus.py`;
+- [kyokenn/rogdrv](https://github.com/kyokenn/rogdrv), the original Linux userspace configurator.
+
+See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the complete notice.
+
+## License and disclaimer
+
+ROGDRV Web is licensed under the [GNU General Public License v3.0](LICENSE).
+
+This is a community project and is not affiliated with or endorsed by ASUS or ROG. Product names are used only to describe compatibility.
