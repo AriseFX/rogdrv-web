@@ -107,6 +107,8 @@ describe('demo mode', () => {
     expect(screen.queryByRole('status', { name: '鼠标实时输入' })).not.toBeInTheDocument()
     expect(screen.queryByText('PROFILE 01')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '性能与控制' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('性能摘要')).not.toBeInTheDocument()
+    expect(screen.queryByText('当前性能')).not.toBeInTheDocument()
     expect(screen.getByText('主 / 接收器固件').parentElement).toHaveTextContent(
       '01.08.03 / 01.04.02',
     )

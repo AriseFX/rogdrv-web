@@ -328,9 +328,9 @@ input[type="range"]::-webkit-slider-thumb { appearance: none; width: 14px; heigh
 select { width: 100%; height: 39px; padding: 0 31px 0 11px; border: 1px solid #303641; border-radius: 8px; outline: 0; color: #dce0e5; background: #111319; font-size: 9px; }
 select:focus { border-color: #5c6471; }
 .settings-workbench { display: grid; grid-template-columns: 210px minmax(0, 1fr); min-height: 0; }
-.settings-summary-panel,
 .lighting-mode-panel,
 .button-source-panel { padding: 18px; border-right: 1px solid var(--line); background: rgba(7, 8, 11, .2); }
+.settings-workbench.performance-workbench { grid-template-columns: minmax(0, 1fr); }
 .settings-panel-heading { display: grid; gap: 4px; }
 .settings-panel-heading strong { color: #e6e9ee; font-size: 11px; }
 .settings-panel-heading span { color: #606773; font-size: 7px; }
@@ -342,11 +342,6 @@ select:focus { border-color: #5c6471; }
 .editor-section-heading span { color: #626975; font-size: 7px; }
 .editor-section-heading output { min-width: 62px; color: #f2f4f7; font-size: 12px; font-weight: 850; text-align: right; }
 
-.performance-summary-list { display: grid; gap: 7px; margin-top: 15px; }
-.performance-summary-list > div { min-height: 50px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 3px 8px; padding: 8px 10px; border: 1px solid #2b3039; border-radius: 9px; background: #121419; }
-.performance-summary-list span { color: #737a85; font-size: 8px; }
-.performance-summary-list strong { color: #e2e5ea; font-size: 10px; }
-.performance-summary-list small { grid-column: 1 / -1; color: #505762; font-size: 6px; }
 .sensor-calibration-card { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(180px, 1fr) auto auto; align-items: center; gap: 14px; min-height: 64px; padding: 10px 12px; border: 1px solid #2d323b; border-radius: 10px; background: #111319; }
 .sensor-calibration-card > div:first-child { display: grid; gap: 5px; }
 .sensor-calibration-card strong { color: #d9dde3; font-size: 9px; }
@@ -501,7 +496,6 @@ footer { height: 48px; padding: 0 30px; display: flex; align-items: center; just
   .dpi-workbench { grid-template-columns: 180px minmax(0, 1fr); }
   .dpi-preset-panel { padding-inline: 14px; }
   .settings-workbench { grid-template-columns: 180px minmax(0, 1fr); }
-  .settings-summary-panel,
   .lighting-mode-panel,
   .button-source-panel { padding-inline: 14px; }
   .button-mapping-workbench { grid-template-columns: 1fr; }
@@ -561,13 +555,9 @@ footer { height: 48px; padding: 0 30px; display: flex; align-items: center; just
   .dpi-value-stepper { grid-template-columns: 29px 96px 29px; }
   .settings-workbench,
   .button-mapping-workbench { grid-template-columns: 1fr; }
-  .settings-summary-panel,
   .lighting-mode-panel,
   .button-source-panel { padding: 15px 12px; border-right: 0; border-bottom: 1px solid var(--line); }
   .settings-editor { padding: 16px 14px 18px; }
-  .performance-summary-list { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .performance-summary-list > div { grid-template-columns: 1fr; }
-  .performance-summary-list strong { grid-row: 2; }
   .performance-detail-grid { grid-template-columns: 1fr; }
   .debounce-options { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .feature-toggle-card { min-height: 65px; }

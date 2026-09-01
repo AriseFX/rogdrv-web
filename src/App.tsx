@@ -622,15 +622,6 @@ function App() {
                   <span className="card-tag">{draft.performance.pollingRate.toLocaleString()} HZ</span>
                 </div>
                 <div className="settings-workbench performance-workbench">
-                  <aside className="settings-summary-panel" aria-label="性能摘要">
-                    <div className="settings-panel-heading"><strong>当前性能</strong><span>修改后应用到设备</span></div>
-                    <div className="performance-summary-list">
-                      <div><span>回报率</span><strong>{draft.performance.pollingRate.toLocaleString()} Hz</strong><small>{(1000 / draft.performance.pollingRate).toFixed(draft.performance.pollingRate === 1000 ? 0 : 1)} ms</small></div>
-                      <div><span>按键去抖</span><strong>{draft.performance.debounce} ms</strong><small>点击延迟</small></div>
-                      <div><span>直线修正</span><strong>{draft.performance.angleSnapping ? '开启' : '关闭'}</strong><small>指针轨迹</small></div>
-                      <div><span>抬升距离</span><strong>{draft.sensor.liftOffDistance === 'low' ? '低' : '高'}</strong><small>表面感应</small></div>
-                    </div>
-                  </aside>
                   <div className="settings-editor performance-editor">
                     <section className="editor-section polling-section">
                       <div className="editor-section-heading"><div><strong>USB 回报率</strong><span>越高，指针反馈越及时</span></div><output>{draft.performance.pollingRate.toLocaleString()} Hz</output></div>
