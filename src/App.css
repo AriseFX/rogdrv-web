@@ -203,7 +203,7 @@
 .device-title { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
 .device-title h1 { margin: 0; font-size: 26px; line-height: 1; letter-spacing: -.6px; }
 .device-title p { margin: 0 0 2px; color: #7c838f; font-size: 9px; }
-.device-meta { display: grid; grid-template-columns: 1fr 1fr; margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: rgba(255, 255, 255, .015); }
+.device-meta { display: grid; grid-template-columns: .75fr 1.5fr 1fr; margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: rgba(255, 255, 255, .015); }
 .device-meta div { display: grid; gap: 4px; padding: 8px 10px; }
 .device-meta div + div { border-left: 1px solid var(--line); }
 .device-meta span { color: #656c77; font-size: 8px; }
@@ -217,6 +217,20 @@
 .profile-grid button.active { color: white; border-color: rgba(var(--accent-rgb), .5); background: rgba(var(--accent-rgb), .1); box-shadow: inset 0 0 24px rgba(var(--accent-rgb), .04); }
 .profile-grid button i { position: absolute; left: 50%; bottom: 5px; width: 12px; height: 2px; transform: translateX(-50%); background: var(--accent); box-shadow: 0 0 7px var(--accent); }
 .profile-hint { margin: 8px 0 0; color: #bd9458; font-size: 8px; }
+.profile-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+.profile-tools button { min-height: 28px; border: 1px solid #282c34; border-radius: 7px; color: #8a929e; background: rgba(255, 255, 255, .015); font-size: 8px; font-weight: 750; }
+.profile-tools button:hover:not(:disabled) { color: #eef1f5; border-color: #434a56; }
+.profile-file-error { margin: 6px 0 0; color: #d8a15b; font-size: 8px; line-height: 1.4; }
+.visually-hidden { position: fixed !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 24px; background: rgba(3, 5, 8, .72); backdrop-filter: blur(10px); }
+.restore-dialog { width: min(430px, 100%); padding: 24px; border: 1px solid #303641; border-radius: 18px; background: #11151b; box-shadow: 0 28px 80px rgba(0, 0, 0, .45); }
+.restore-dialog h2 { margin: 8px 0 16px; font-size: 20px; }
+.restore-dialog dl { display: grid; gap: 1px; overflow: hidden; margin: 0; border: 1px solid #292f38; border-radius: 10px; background: #292f38; }
+.restore-dialog dl div { display: flex; justify-content: space-between; gap: 16px; padding: 10px 12px; background: #151920; }
+.restore-dialog dt { color: #737c89; }
+.restore-dialog dd { margin: 0; color: #e6e9ed; font-weight: 750; }
+.restore-dialog p { margin: 14px 0 18px; color: #7c8591; font-size: 11px; line-height: 1.6; }
+.restore-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .support-note { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; color: #656c77; }
 .support-icon { width: 15px; height: 15px; display: grid; place-items: center; flex: none; border: 1px solid #414752; border-radius: 50%; font-size: 8px; }
 .support-note p { margin: 0; font-size: 8px; line-height: 1.45; }
@@ -333,6 +347,16 @@ select:focus { border-color: #5c6471; }
 .performance-summary-list span { color: #737a85; font-size: 8px; }
 .performance-summary-list strong { color: #e2e5ea; font-size: 10px; }
 .performance-summary-list small { grid-column: 1 / -1; color: #505762; font-size: 6px; }
+.sensor-calibration-card { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(180px, 1fr) auto auto; align-items: center; gap: 14px; min-height: 64px; padding: 10px 12px; border: 1px solid #2d323b; border-radius: 10px; background: #111319; }
+.sensor-calibration-card > div:first-child { display: grid; gap: 5px; }
+.sensor-calibration-card strong { color: #d9dde3; font-size: 9px; }
+.sensor-calibration-card span { color: #5e6570; font-size: 7px; line-height: 1.4; }
+.lift-off-options { display: grid; grid-template-columns: repeat(2, 82px); gap: 5px; }
+.lift-off-options button { display: grid; gap: 3px; padding: 7px 9px; border: 1px solid #303640; border-radius: 8px; color: #9ba2ad; background: #171a20; font-size: 9px; text-align: left; }
+.lift-off-options button small { color: #59616d; font-size: 6px; }
+.lift-off-options button.selected { border-color: rgba(110, 158, 255, .62); color: #eef3ff; background: rgba(65, 113, 210, .18); }
+.calibration-reset { min-height: 34px; padding: 0 11px; border: 1px solid #303640; border-radius: 8px; color: #8e96a2; background: transparent; font-size: 8px; font-weight: 750; }
+.calibration-reset:hover:not(:disabled) { color: white; border-color: #4a5260; }
 .polling-rate-track { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 13px; padding: 6px; border: 1px solid #2d323b; border-radius: 11px; background: #0b0d11; }
 .polling-rate-track button { position: relative; min-width: 0; height: 62px; display: grid; grid-template-columns: auto auto; place-content: center; align-items: baseline; gap: 0 3px; border: 1px solid transparent; border-radius: 8px; color: #7a818c; background: linear-gradient(160deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, .01)); }
 .polling-rate-track button + button::before { content: ""; position: absolute; left: -4px; top: 11px; bottom: 11px; width: 1px; background: #252a32; }
@@ -541,12 +565,14 @@ footer { height: 48px; padding: 0 30px; display: flex; align-items: center; just
   .lighting-mode-panel,
   .button-source-panel { padding: 15px 12px; border-right: 0; border-bottom: 1px solid var(--line); }
   .settings-editor { padding: 16px 14px 18px; }
-  .performance-summary-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .performance-summary-list { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .performance-summary-list > div { grid-template-columns: 1fr; }
   .performance-summary-list strong { grid-row: 2; }
   .performance-detail-grid { grid-template-columns: 1fr; }
   .debounce-options { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .feature-toggle-card { min-height: 65px; }
+  .sensor-calibration-card { grid-template-columns: 1fr; }
+  .lift-off-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lighting-mode-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lighting-editor { grid-template-columns: 1fr; }
   .lighting-hero { grid-row: auto; grid-template-columns: 76px 1fr; place-items: center start; padding: 0 0 16px; border-right: 0; border-bottom: 1px solid #242830; text-align: left; }

@@ -56,6 +56,17 @@ export interface LedSettings {
   color: RgbColor
 }
 
+export interface BatteryStatus {
+  percentage: number
+  charging: boolean
+}
+
+export type LiftOffDistance = 'low' | 'high'
+
+export interface SensorSettings {
+  liftOffDistance: LiftOffDistance
+}
+
 export interface ProfileSnapshot {
   profileIndex: number
   dpiPreset: number | null
@@ -63,9 +74,23 @@ export interface ProfileSnapshot {
   primaryFirmware: FirmwareVersion
   secondaryFirmware: FirmwareVersion
   performance: PerformanceSettings
+  sensor: SensorSettings
   dpiColors: DpiColors
   buttons: ButtonBinding[]
   led: LedSettings
+}
+
+export interface MouseBackup {
+  schema: 'rogdrv-web/mouse-backup'
+  version: 1
+  createdAt: string
+  activeProfileIndex: number
+  device: {
+    vendorId: number
+    productId: number
+    productName: string
+  }
+  profiles: ProfileSnapshot[]
 }
 
 export interface TransportLogEntry {

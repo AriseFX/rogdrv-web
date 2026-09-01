@@ -10,11 +10,14 @@ export const ASUS_COMMAND = {
   getLed: 0x0312,
   getSettings: 0x0412,
   getButtons: 0x0512,
+  getLiftOffDistance: 0x0612,
+  getBattery: 0x0712,
   setProfile: 0x0250,
   save: 0x0350,
   setButton: 0x2151,
   setLed: 0x2851,
   setSetting: 0x3151,
+  setLiftOffDistance: 0x3551,
 } as const
 
 export const SUPPORTED_DEVICES: SupportedDevice[] = [

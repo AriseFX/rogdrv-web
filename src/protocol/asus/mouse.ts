@@ -1,7 +1,9 @@
 import {
   AsusCommandRejectedError,
   buildGetButtonsRequest,
+  buildGetBatteryRequest,
   buildGetLedRequest,
+  buildGetLiftOffDistanceRequest,
   buildGetProfileRequest,
   buildGetSettingsRequest,
   buildSaveRequest,
@@ -12,11 +14,14 @@ import {
   buildSetDpiPresetRequest,
   buildSetDpiPresetCountRequest,
   buildSetLedRequest,
+  buildSetLiftOffDistanceRequest,
   buildSetPollingRateRequest,
   buildSetProfileRequest,
   parseButtons,
+  parseBatteryStatus,
   parseDpiColors,
   parseLed,
+  parseLiftOffDistance,
   parsePerformance,
   parseProfileInfo,
 } from './codec'
@@ -26,6 +31,69 @@ const sameColor = (
   left: ProfileSnapshot['led']['color'],
   right: ProfileSnapshot['led']['color'],
 ) => left.r === right.r && left.g === right.g && left.b === right.b
+
+const sameSnapshot = (left: ProfileSnapshot, right: ProfileSnapshot) =>
+  JSON.stringify(left) === JSON.stringify(right)
+
+const verificationFailures = (
+  before: ProfileSnapshot,
+  expected: ProfileSnapshot,
+  actual: ProfileSnapshot,
+) => {
+  const failures: string[] = []
+  const verify = (changed: boolean, matches: boolean, label: string) => {
+    if (changed && !matches) failures.push(label)
+  }
+  verify(before.dpiPreset !== expected.dpiPreset, actual.dpiPreset === expected.dpiPreset, '当前 DPI 档位')
+  verify(before.dpiPresetCount !== expected.dpiPresetCount, actual.dpiPresetCount === expected.dpiPresetCount, 'DPI 档位数量')
+  expected.performance.dpi.forEach((dpi, index) => {
+    verify(before.performance.dpi[index] !== dpi, actual.performance.dpi[index] === dpi, `DPI 档位 ${index + 1}`)
+    verify(
+      !sameColor(before.dpiColors[index], expected.dpiColors[index]),
+      sameColor(actual.dpiColors[index], expected.dpiColors[index]),
+      `DPI 档位 ${index + 1} 颜色`,
+    )
+  })
+  verify(
+    before.performance.pollingRate !== expected.performance.pollingRate,
+    actual.performance.pollingRate === expected.performance.pollingRate,
+    '回报率',
+  )
+  verify(
+    before.performance.debounce !== expected.performance.debounce,
+    actual.performance.debounce === expected.performance.debounce,
+    '按键去抖',
+  )
+  verify(
+    before.performance.angleSnapping !== expected.performance.angleSnapping,
+    actual.performance.angleSnapping === expected.performance.angleSnapping,
+    '直线修正',
+  )
+  verify(
+    before.sensor.liftOffDistance !== expected.sensor.liftOffDistance,
+    actual.sensor.liftOffDistance === expected.sensor.liftOffDistance,
+    '抬升距离',
+  )
+  expected.buttons.forEach((button, index) => {
+    const previous = before.buttons[index]
+    const received = actual.buttons[index]
+    verify(
+      previous.action.kind !== button.action.kind || previous.action.code !== button.action.code,
+      received.action.kind === button.action.kind && received.action.code === button.action.code,
+      button.sourceLabel,
+    )
+  })
+  verify(before.led.mode !== expected.led.mode, actual.led.mode === expected.led.mode, 'Logo 灯效模式')
+  verify(before.led.brightness !== expected.led.brightness, actual.led.brightness === expected.led.brightness, 'Logo 灯效亮度')
+  verify(
+    !sameColor(before.led.color, expected.led.color),
+    sameColor(actual.led.color, expected.led.color),
+    'Logo 灯效颜色',
+  )
+  return failures
+}
+
+const errorMessage = (cause: unknown) => cause instanceof Error ? cause.message : String(cause)
 
 export class AsusMouse {
   private readonly transport: QueryTransport
@@ -46,6 +114,11 @@ export class AsusMouse {
     const dpiColors = parseDpiColors(await this.transport.query(buildGetSettingsRequest(3)))
     const buttons = parseButtons(await this.transport.query(buildGetButtonsRequest()))
     const led = parseLed(await this.transport.query(buildGetLedRequest()))
+    const sensor = {
+      liftOffDistance: parseLiftOffDistance(
+        await this.transport.query(buildGetLiftOffDistanceRequest()),
+      ),
+    }
 
     return {
       profileIndex: info.profileIndex,
@@ -54,15 +127,94 @@ export class AsusMouse {
       primaryFirmware: info.primaryFirmware,
       secondaryFirmware: info.secondaryFirmware,
       performance,
+      sensor,
       dpiColors,
       buttons,
       led,
     }
   }
 
+  async readBatteryStatus() {
+    return parseBatteryStatus(await this.transport.query(buildGetBatteryRequest()))
+  }
+
+  async resetSurfaceCalibration() {
+    const current = await this.readCurrentProfile()
+    await this.transport.query(buildSetLiftOffDistanceRequest(current.sensor.liftOffDistance))
+    await this.transport.query(buildSaveRequest())
+    const actual = await this.readCurrentProfile()
+    if (actual.sensor.liftOffDistance !== current.sensor.liftOffDistance) {
+      throw new Error('标准表面校准恢复后校验失败')
+    }
+    return actual.sensor
+  }
+
   async switchProfile(index: number) {
     await this.transport.query(buildSetProfileRequest(index))
     return this.readCurrentProfile()
+  }
+
+  async readAllProfiles() {
+    const initial = await this.readCurrentProfile()
+    const profiles: ProfileSnapshot[] = []
+    try {
+      for (let index = 0; index < 5; index += 1) {
+        if (index === initial.profileIndex) {
+          profiles[index] = initial
+        } else {
+          profiles[index] = await this.switchProfile(index)
+        }
+      }
+    } finally {
+      await this.switchProfile(initial.profileIndex)
+    }
+    return profiles
+  }
+
+  async restoreProfiles(profiles: ProfileSnapshot[], activeProfileIndex: number) {
+    if (profiles.length !== 5) throw new Error('恢复必须包含 5 个板载配置')
+    if (!Number.isInteger(activeProfileIndex) || activeProfileIndex < 0 || activeProfileIndex > 4) {
+      throw new Error('恢复的活动配置档无效')
+    }
+    for (let index = 0; index < 5; index += 1) {
+      const current = await this.switchProfile(index)
+      await this.applyChangesSafely(current, profiles[index])
+    }
+    return this.switchProfile(activeProfileIndex)
+  }
+
+  async applyChangesSafely(current: ProfileSnapshot, draft: ProfileSnapshot) {
+    let actual: ProfileSnapshot | null = null
+    let verificationFailed = false
+    try {
+      const changed = await this.applyChanges(current, draft)
+      if (!changed) return false
+      actual = await this.readCurrentProfile()
+      const failures = verificationFailures(current, draft, actual)
+      if (failures.length > 0) {
+        verificationFailed = true
+        throw new Error(`写入校验失败：${failures.join('、')}`)
+      }
+      return true
+    } catch (cause) {
+      if (!actual) actual = await this.readCurrentProfile().catch(() => structuredClone(draft))
+      const needsRecovery = verificationFailed || !sameSnapshot(current, actual)
+      if (!needsRecovery) throw cause
+      try {
+        await this.applyChanges(actual, current)
+        const restored = await this.readCurrentProfile()
+        const recoveryFailures = verificationFailures(actual, current, restored)
+        if (recoveryFailures.length > 0) {
+          throw new Error(`恢复校验失败：${recoveryFailures.join('、')}`)
+        }
+      } catch (recoveryCause) {
+        throw new Error(
+          `${errorMessage(cause)}；自动恢复失败：${errorMessage(recoveryCause)}`,
+          { cause },
+        )
+      }
+      throw new Error(`${errorMessage(cause)}；已自动恢复原配置`, { cause })
+    }
   }
 
   async applyChanges(current: ProfileSnapshot, draft: ProfileSnapshot) {
@@ -153,6 +305,10 @@ export class AsusMouse {
     }
     if (current.performance.angleSnapping !== draft.performance.angleSnapping) {
       await this.transport.query(buildSetAngleSnappingRequest(draft.performance.angleSnapping))
+      changed = true
+    }
+    if (current.sensor.liftOffDistance !== draft.sensor.liftOffDistance) {
+      await this.transport.query(buildSetLiftOffDistanceRequest(draft.sensor.liftOffDistance))
       changed = true
     }
 

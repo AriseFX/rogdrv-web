@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createMouseBackup } from '../protocol/asus/backup'
 import { SUPPORTED_DEVICES } from '../protocol/asus/constants'
 import { AsusMouse } from '../protocol/asus/mouse'
 import { VirtualAsusDevice } from '../protocol/asus/simulator'
 import { AsusHidTransport } from '../protocol/asus/transport'
 import type {
+  BatteryStatus,
+  MouseBackup,
   ProfileSnapshot,
   SupportedDevice,
   TransportDiagnostics,
@@ -23,6 +26,7 @@ const demoDiagnostics: TransportDiagnostics = {
   collectionCount: 1,
   vendorCollections: ['0xff01:0x0001'],
 }
+const demoBattery: BatteryStatus = { percentage: 68, charging: false }
 
 const makeDemoProfile = (profileIndex = 0): ProfileSnapshot => ({
   profileIndex,
@@ -36,6 +40,7 @@ const makeDemoProfile = (profileIndex = 0): ProfileSnapshot => ({
     debounce: 12,
     angleSnapping: false,
   },
+  sensor: { liftOffDistance: 'low' },
   dpiColors: [
     { r: 0xff, g: 0x00, b: 0x00 },
     { r: 0xc1, g: 0x00, b: 0xff },
@@ -67,6 +72,9 @@ const definitionFor = (device: HIDDevice) =>
       candidate.vendorId === device.vendorId && candidate.productId === device.productId,
   )
 
+const snapshotsEqual = (left: ProfileSnapshot, right: ProfileSnapshot) =>
+  JSON.stringify(left) === JSON.stringify(right)
+
 export function useAsusMouse() {
   const transportRef = useRef<AsusHidTransport | null>(null)
   const mouseRef = useRef<AsusMouse | null>(demoMouse)
@@ -85,6 +93,7 @@ export function useAsusMouse() {
   const [diagnostics, setDiagnostics] = useState<TransportDiagnostics | null>(
     demoMode ? demoDiagnostics : null,
   )
+  const [battery, setBattery] = useState<BatteryStatus | null>(demoMode ? demoBattery : null)
   const [logs, setLogs] = useState<TransportLogEntry[]>(
     demoMode ? [{ direction: 'info', message: '演示模式：未连接真实硬件', timestamp: demoStartedAt }] : [],
   )
@@ -93,13 +102,26 @@ export function useAsusMouse() {
 
   const connected = connectionState === 'connected'
   const dirty = useMemo(
-    () => profile !== null && draft !== null && JSON.stringify(profile) !== JSON.stringify(draft),
+    () => profile !== null && draft !== null && !snapshotsEqual(profile, draft),
     [draft, profile],
   )
 
   const appendLog = useCallback((entry: TransportLogEntry) => {
     setLogs((current) => [...current.slice(-119), entry])
   }, [])
+
+  const readBattery = useCallback(async (mouse: AsusMouse) => {
+    try {
+      return await mouse.readBatteryStatus()
+    } catch (cause) {
+      appendLog({
+        direction: 'info',
+        message: `电量读取不可用：${cause instanceof Error ? cause.message : String(cause)}`,
+        timestamp: Date.now(),
+      })
+      return null
+    }
+  }, [appendLog])
 
   const resetConnection = useCallback(() => {
     transportRef.current = null
@@ -109,6 +131,7 @@ export function useAsusMouse() {
     setProfile(null)
     setDraft(null)
     setDiagnostics(null)
+    setBattery(null)
     setBusy(false)
   }, [])
 
@@ -117,6 +140,7 @@ export function useAsusMouse() {
     setConnectionState('connecting')
     setError(null)
     const snapshot = await mouse.readCurrentProfile()
+    setBattery(await readBattery(mouse))
     setDeviceDefinition(SUPPORTED_DEVICES[0])
     setProfile(snapshot)
     setDraft(structuredClone(snapshot))
@@ -128,7 +152,7 @@ export function useAsusMouse() {
     })
     setConnectionState('connected')
     return true
-  }, [appendLog])
+  }, [appendLog, readBattery])
 
   const openDevice = useCallback(
     async (device: HIDDevice) => {
@@ -142,6 +166,7 @@ export function useAsusMouse() {
         setDiagnostics(transport.diagnostics)
         setDeviceDefinition(definitionFor(device) ?? null)
         const snapshot = await mouse.readCurrentProfile()
+        setBattery(await readBattery(mouse))
         setProfile(snapshot)
         setDraft(structuredClone(snapshot))
         setConnectionState('connected')
@@ -156,7 +181,7 @@ export function useAsusMouse() {
         return cause instanceof Error ? cause.message : String(cause)
       }
     },
-    [appendLog, resetConnection],
+    [appendLog, readBattery, resetConnection],
   )
 
   const openFirstCompatibleDevice = useCallback(
@@ -241,13 +266,118 @@ export function useAsusMouse() {
     }
   }, [])
 
+  const refresh = useCallback(async () => {
+    const mouse = mouseRef.current
+    if (!mouse) return false
+    if (dirty) {
+      setError('当前有未应用的更改；请先应用或放弃，再重新读取设备。')
+      return false
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const snapshot = await mouse.readCurrentProfile()
+      setBattery(await readBattery(mouse))
+      setProfile(snapshot)
+      setDraft(structuredClone(snapshot))
+      return true
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }, [dirty, readBattery])
+
+  const exportBackup = useCallback(async () => {
+    const mouse = mouseRef.current
+    if (!mouse || !profile) return null
+    if (dirty) {
+      setError('当前有未应用的更改；请先应用或放弃，再导出配置备份。')
+      return null
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const profiles = await mouse.readAllProfiles()
+      return createMouseBackup(profiles, {
+        vendorId: diagnostics!.vendorId,
+        productId: diagnostics!.productId,
+        productName: diagnostics!.productName,
+      }, profile.profileIndex)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+      return null
+    } finally {
+      setBusy(false)
+    }
+  }, [diagnostics, dirty, profile])
+
+  const restoreBackup = useCallback(async (backup: MouseBackup) => {
+    const mouse = mouseRef.current
+    if (!mouse) return false
+    if (dirty) {
+      setError('当前有未应用的更改；请先应用或放弃，再恢复配置。')
+      return false
+    }
+    const supportedBackupDevice = SUPPORTED_DEVICES.some(
+      ({ vendorId, productId }) => vendorId === backup.device.vendorId && productId === backup.device.productId,
+    )
+    if (!supportedBackupDevice) {
+      setError('此备份不属于受支持的战刃 III 设备，已停止恢复。')
+      return false
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const snapshot = await mouse.restoreProfiles(backup.profiles, backup.activeProfileIndex)
+      setProfile(snapshot)
+      setDraft(structuredClone(snapshot))
+      return true
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }, [dirty])
+
+  const resetSurfaceCalibration = useCallback(async () => {
+    const mouse = mouseRef.current
+    if (!mouse) return false
+    if (dirty) {
+      setError('当前有未应用的更改；请先应用或放弃，再恢复标准表面校准。')
+      return false
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      await mouse.resetSurfaceCalibration()
+      const snapshot = await mouse.readCurrentProfile()
+      setProfile(snapshot)
+      setDraft(structuredClone(snapshot))
+      return true
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }, [dirty])
+
   const apply = useCallback(async () => {
     const mouse = mouseRef.current
     if (!profile || !draft || !mouse) return
     setBusy(true)
     setError(null)
     try {
-      await mouse.applyChanges(profile, draft)
+      const latest = await mouse.readCurrentProfile()
+      if (!snapshotsEqual(profile, latest)) {
+        setProfile(latest)
+        setError('设备配置已在外部发生变化，已停止写入并保留当前编辑。请检查差异后重新应用。')
+        return
+      }
+      await mouse.applyChangesSafely(profile, draft)
       const snapshot = await mouse.readCurrentProfile()
       setProfile(snapshot)
       setDraft(structuredClone(snapshot))
@@ -284,6 +414,7 @@ export function useAsusMouse() {
     draft,
     setDraft,
     diagnostics,
+    battery,
     logs,
     error,
     busy,
@@ -292,6 +423,10 @@ export function useAsusMouse() {
     reconnect,
     disconnect,
     switchProfile,
+    refresh,
+    exportBackup,
+    restoreBackup,
+    resetSurfaceCalibration,
     apply,
     discard,
   }

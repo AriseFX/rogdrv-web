@@ -21,12 +21,14 @@ describe('VirtualAsusDevice', () => {
 
     expect(current.dpiPresetCount).toBe(2)
     draft.dpiPresetCount = 4
+    draft.dpiPreset = 0
 
     draft.performance.dpi = [100, 1200, 16_000, 36_000]
     draft.dpiColors[1] = { r: 0x11, g: 0x22, b: 0x33 }
     draft.performance.pollingRate = 500
     draft.performance.debounce = 32
     draft.performance.angleSnapping = true
+    draft.sensor.liftOffDistance = 'high'
     draft.buttons[3].action = BUTTON_ACTIONS.find(
       (action) => action.kind === 'keyboard' && action.label === 'A',
     )!
@@ -40,11 +42,12 @@ describe('VirtualAsusDevice', () => {
       color: { r: 0x12, g: 0x34, b: 0x56 },
     }
 
-    await expect(mouse.applyChanges(current, draft)).resolves.toBe(true)
+    await expect(mouse.applyChangesSafely(current, draft)).resolves.toBe(true)
     await expect(mouse.readCurrentProfile()).resolves.toMatchObject({
       profileIndex: 0,
       dpiPresetCount: 4,
       performance: draft.performance,
+      sensor: draft.sensor,
       buttons: expect.arrayContaining([
         expect.objectContaining({
           sourceCode: draft.buttons[0].sourceCode,

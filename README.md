@@ -15,17 +15,21 @@ ROGDRV Web talks directly to supported hardware from a Chromium browser. It does
 - Switch between five onboard profiles.
 - Configure two to four DPI stages from `100` to `36,000` DPI in steps of `50`, with an independent indicator color for each stage.
 - Select `125 / 250 / 500 / 1000 Hz` polling rates.
-- Configure `4–32 ms` click debounce and angle snapping.
+- Configure `4–32 ms` click debounce, angle snapping, and low/high lift-off distance.
 - Remap mouse actions and individual keyboard keys.
 - Configure Logo RGB modes, color, and brightness.
 - Show a compact mouse overview with labeled primary and side-button positions.
-- Read firmware versions, the active DPI stage, and raw HID communication logs.
-- Write only changed fields, then commit them to onboard memory once.
+- Read firmware versions, battery/charging status, the active DPI stage, and raw HID communication logs.
+- Export or restore all five onboard profiles as a versioned JSON backup.
+- Re-read the device on demand without replacing unsaved edits.
+- Write only changed fields, verify the device readback, and automatically restore the previous configuration after a partial or ignored write.
+- Restore the mouse's standard surface calibration while preserving the selected lift-off distance.
 - Detect the writable vendor HID interface exposed by receivers with multiple interfaces.
 - Reconnect previously authorized devices after a refresh without reopening the permission picker.
 - Detect the enabled DPI-stage count for every onboard profile and preserve it during writes.
 
 ROGDRV Web deliberately **does not provide firmware updates** and never attempts to access a mouse's DFU mode.
+Independent X/Y-axis DPI editing is intentionally unavailable: the current device workflow keeps both axes equal instead of exposing a control that has not been safely validated for writes.
 
 ## Compatibility
 
@@ -108,11 +112,14 @@ ROGDRV Web uses 64-byte ASUS HID Input/Output Reports rather than Feature Report
 | `GET_LED` | `0x0312` | Lighting configuration |
 | `GET_SETTINGS` | `0x0412` | DPI, indicator colors, polling rate, debounce, and angle snapping |
 | `GET_BUTTONS` | `0x0512` | Button mappings |
+| `GET_LIFT_OFF_DISTANCE` | `0x0612` | Lift-off distance |
+| `GET_BATTERY` | `0x0712` | Battery percentage and charging status |
 | `SET_PROFILE` | `0x0250` | Switch onboard profile |
 | `SAVE` | `0x0350` | Commit changes to onboard memory |
 | `SET_BUTTON` | `0x2151` | Set a button mapping |
 | `SET_LED` | `0x2851` | Set lighting configuration |
 | `SET_SETTING` | `0x3151` | Set a performance field |
+| `SET_LIFT_OFF_DISTANCE` | `0x3551` | Set lift-off distance and restore standard surface calibration |
 
 The protocol implementation lives in [`src/protocol/asus`](src/protocol/asus), and React device state lives in [`src/hooks/useAsusMouse.ts`](src/hooks/useAsusMouse.ts).
 

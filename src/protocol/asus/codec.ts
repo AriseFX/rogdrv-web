@@ -8,11 +8,13 @@ import {
   POLLING_RATES,
 } from './constants'
 import type {
+  BatteryStatus,
   ButtonAction,
   ButtonBinding,
   DpiColors,
   FirmwareVersion,
   LedSettings,
+  LiftOffDistance,
   PerformanceSettings,
   ProfileInfo,
   RgbColor,
@@ -189,8 +191,31 @@ export function parseLed(response: Uint8Array): LedSettings {
   }
 }
 
+export function parseBatteryStatus(response: Uint8Array): BatteryStatus {
+  assertSuccessfulResponse(response)
+  if (response.byteLength < 10) throw new Error('电量数据不完整')
+  if (response[4] > 100) throw new Error('电量数值超出范围')
+  return { percentage: response[4], charging: response[9] !== 0 }
+}
+
+export function parseLiftOffDistance(response: Uint8Array): LiftOffDistance {
+  assertSuccessfulResponse(response)
+  if (response.byteLength < 8) throw new Error('抬升距离数据不完整')
+  if (response[7] === 0) return 'low'
+  if (response[7] === 1) return 'high'
+  throw new Error(`未知的抬升距离 ${response[7]}`)
+}
+
 export function buildGetProfileRequest() {
   return makeRequest(ASUS_COMMAND.getProfile)
+}
+
+export function buildGetBatteryRequest() {
+  return makeRequest(ASUS_COMMAND.getBattery)
+}
+
+export function buildGetLiftOffDistanceRequest() {
+  return makeRequest(ASUS_COMMAND.getLiftOffDistance)
 }
 
 export function buildGetSettingsRequest(section = 0) {
@@ -268,6 +293,14 @@ export function buildSetAngleSnappingRequest(enabled: boolean) {
   return makeRequest(ASUS_COMMAND.setSetting, (packet) => {
     packet[2] = 6
     packet[4] = enabled ? 1 : 0
+  })
+}
+
+export function buildSetLiftOffDistanceRequest(distance: LiftOffDistance) {
+  return makeRequest(ASUS_COMMAND.setLiftOffDistance, (packet) => {
+    packet[2] = 0xff
+    packet[4] = 0xff
+    packet[5] = distance === 'high' ? 1 : 0
   })
 }
 

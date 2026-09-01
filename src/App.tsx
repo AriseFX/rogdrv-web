@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import './App.css'
 import { useAsusMouse } from './hooks/useAsusMouse'
@@ -9,7 +9,8 @@ import {
   POLLING_RATES,
 } from './protocol/asus/constants'
 import { normalizeDpi } from './protocol/asus/codec'
-import type { ButtonAction, ProfileSnapshot } from './protocol/asus/types'
+import { parseMouseBackup, serializeMouseBackup } from './protocol/asus/backup'
+import type { ButtonAction, MouseBackup, ProfileSnapshot } from './protocol/asus/types'
 
 function firmwareLabel(version: ProfileSnapshot['primaryFirmware']) {
   return [version.major, version.minor, version.build]
@@ -138,6 +139,7 @@ function App() {
     draft,
     setDraft,
     diagnostics,
+    battery,
     logs,
     error,
     busy,
@@ -146,6 +148,10 @@ function App() {
     reconnect,
     disconnect,
     switchProfile,
+    refresh,
+    exportBackup,
+    restoreBackup,
+    resetSurfaceCalibration,
     apply,
     discard,
   } = useAsusMouse()
@@ -154,6 +160,9 @@ function App() {
   const [dpiSelection, setDpiSelection] = useState<{ profileIndex: number, stage: number } | null>(null)
   const [selectedButtonIndex, setSelectedButtonIndex] = useState(0)
   const [buttonActionGroup, setButtonActionGroup] = useState<'mouse' | 'keyboard'>('mouse')
+  const [pendingBackup, setPendingBackup] = useState<MouseBackup | null>(null)
+  const [backupFileError, setBackupFileError] = useState<string | null>(null)
+  const backupInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const preventContextMenu = (event: MouseEvent) => event.preventDefault()
@@ -238,6 +247,42 @@ function App() {
     setReconnectLabel('使用已授权设备')
   }
 
+  const exportConfiguration = async () => {
+    const backup = await exportBackup()
+    if (!backup) return
+    const url = URL.createObjectURL(new Blob([serializeMouseBackup(backup)], {
+      type: 'application/json',
+    }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `rog-gladius-iii-backup-${backup.createdAt.slice(0, 10)}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const readBackupFile = (file: File) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.addEventListener('load', () => resolve(String(reader.result ?? '')))
+    reader.addEventListener('error', () => reject(new Error('无法读取备份文件')))
+    reader.readAsText(file)
+  })
+
+  const importConfiguration = async (file: File | undefined) => {
+    if (!file) return
+    setBackupFileError(null)
+    try {
+      setPendingBackup(parseMouseBackup(await readBackupFile(file)))
+    } catch (cause) {
+      setBackupFileError((cause as Error).message)
+    } finally {
+      if (backupInputRef.current) backupInputRef.current.value = ''
+    }
+  }
+
+  const confirmRestore = async () => {
+    if (await restoreBackup(pendingBackup!)) setPendingBackup(null)
+  }
+
   const isConnecting = connectionState === 'connecting'
   const selectedDpiIndex = draft
     ? Math.min(
@@ -294,6 +339,9 @@ function App() {
           </span>
           {connected && (
             <div className="header-save-actions">
+              <button type="button" className="button ghost header-refresh" onClick={() => void refresh()} disabled={busy}>
+                {busy ? '正在读取…' : '重新读取设备'}
+              </button>
               {dirty && <button type="button" className="button ghost header-discard" onClick={discard} disabled={busy}>放弃</button>}
               <button type="button" className="button primary header-apply" onClick={() => void apply()} disabled={!dirty || busy}>
                 {busy ? '正在写入…' : '应用到设备'}
@@ -342,6 +390,10 @@ function App() {
               <span>主 / 接收器固件</span>
               <strong>{profile ? `${firmwareLabel(profile.primaryFirmware)} / ${firmwareLabel(profile.secondaryFirmware)}` : '— / —'}</strong>
             </div>
+            <div>
+              <span>电量</span>
+              <strong>{battery ? `${battery.percentage}% · ${battery.charging ? '正在充电' : '使用电池'}` : '—'}</strong>
+            </div>
           </div>
 
           <div className="profile-nav">
@@ -365,6 +417,19 @@ function App() {
               ))}
             </div>
             {dirty && <p className="profile-hint">保存或放弃更改后才能切换配置档</p>}
+            <div className="profile-tools">
+              <button type="button" onClick={() => void exportConfiguration()} disabled={!connected || busy}>导出配置备份</button>
+              <button type="button" onClick={() => backupInputRef.current?.click()} disabled={!connected || busy}>导入配置备份</button>
+              <input
+                ref={backupInputRef}
+                className="visually-hidden"
+                type="file"
+                accept="application/json,.json"
+                aria-label="选择配置备份文件"
+                onChange={(event) => void importConfiguration(event.target.files?.[0])}
+              />
+            </div>
+            {backupFileError && <p className="profile-file-error" role="alert">{backupFileError}</p>}
           </div>
 
           <div className="support-note">
@@ -563,6 +628,7 @@ function App() {
                       <div><span>回报率</span><strong>{draft.performance.pollingRate.toLocaleString()} Hz</strong><small>{(1000 / draft.performance.pollingRate).toFixed(draft.performance.pollingRate === 1000 ? 0 : 1)} ms</small></div>
                       <div><span>按键去抖</span><strong>{draft.performance.debounce} ms</strong><small>点击延迟</small></div>
                       <div><span>直线修正</span><strong>{draft.performance.angleSnapping ? '开启' : '关闭'}</strong><small>指针轨迹</small></div>
+                      <div><span>抬升距离</span><strong>{draft.sensor.liftOffDistance === 'low' ? '低' : '高'}</strong><small>表面感应</small></div>
                     </div>
                   </aside>
                   <div className="settings-editor performance-editor">
@@ -602,6 +668,28 @@ function App() {
                         <input aria-label="直线修正" type="checkbox" checked={draft.performance.angleSnapping} onChange={(event) => updateDraft((current) => ({ ...current, performance: { ...current.performance, angleSnapping: event.target.checked } }))} />
                         <i />
                       </label>
+                      <section className="sensor-calibration-card">
+                        <div><strong>表面感应</strong><span>低档更快停止追踪；改变档位会恢复标准表面校准</span></div>
+                        <div className="lift-off-options" role="group" aria-label="抬升距离">
+                          {(['low', 'high'] as const).map((distance) => (
+                            <button
+                              key={distance}
+                              type="button"
+                              className={draft.sensor.liftOffDistance === distance ? 'selected' : ''}
+                              aria-label={`${distance === 'low' ? '低' : '高'}抬升距离`}
+                              aria-pressed={draft.sensor.liftOffDistance === distance}
+                              onClick={() => updateDraft((current) => ({ ...current, sensor: { liftOffDistance: distance } }))}
+                            >{distance === 'low' ? '低' : '高'}<small>{distance === 'low' ? '更早停止' : '更高容差'}</small></button>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          className="calibration-reset"
+                          aria-label="恢复标准表面校准"
+                          disabled={busy || dirty}
+                          onClick={() => void resetSurfaceCalibration()}
+                        >恢复标准校准</button>
+                      </section>
                     </div>
                   </div>
                 </div>
@@ -768,6 +856,25 @@ function App() {
           </footer>
         </section>
       </main>
+
+      {pendingBackup && (
+        <div className="modal-backdrop" role="presentation">
+          <section className="restore-dialog" role="dialog" aria-modal="true" aria-label="配置恢复预览">
+            <span className="eyebrow accent">恢复预览</span>
+            <h2>恢复 5 个板载配置</h2>
+            <dl>
+              <div><dt>备份日期</dt><dd>{pendingBackup.createdAt.slice(0, 10)}</dd></div>
+              <div><dt>目标设备</dt><dd>{pendingBackup.device.productName}</dd></div>
+              <div><dt>恢复后配置</dt><dd>0{pendingBackup.activeProfileIndex + 1}</dd></div>
+            </dl>
+            <p>将依次写入全部配置档。恢复过程中请保持鼠标连接。</p>
+            <div className="restore-actions">
+              <button type="button" className="button ghost" onClick={() => setPendingBackup(null)} disabled={busy}>取消</button>
+              <button type="button" className="button primary" onClick={() => void confirmRestore()} disabled={busy}>{busy ? '正在恢复…' : '恢复到设备'}</button>
+            </div>
+          </section>
+        </div>
+      )}
 
     </div>
   )

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   assertSuccessfulResponse,
   buildGetButtonsRequest,
+  buildGetBatteryRequest,
   buildGetLedRequest,
+  buildGetLiftOffDistanceRequest,
   buildGetProfileRequest,
   buildGetSettingsRequest,
   buildSaveRequest,
@@ -13,13 +15,16 @@ import {
   buildSetDpiPresetRequest,
   buildSetDpiPresetCountRequest,
   buildSetLedRequest,
+  buildSetLiftOffDistanceRequest,
   buildSetPollingRateRequest,
   buildSetProfileRequest,
   makeRequest,
   normalizeDpi,
   parseButtons,
+  parseBatteryStatus,
   parseDpiColors,
   parseLed,
+  parseLiftOffDistance,
   parsePerformance,
   parseProfileInfo,
   responseCode,
@@ -47,6 +52,34 @@ describe('ASUS protocol codec', () => {
       primaryFirmware: { major: 0x17, minor: 0x02, build: 0x21 },
       secondaryFirmware: { major: 0x05, minor: 0x07, build: 0x11 },
     })
+  })
+
+  it('builds and parses the AimPoint battery and charging-status report', () => {
+    const request = buildGetBatteryRequest()
+    expect(Array.from(request.slice(0, 10))).toEqual([0x12, 0x07, 0, 0, 0, 0, 0, 0, 0, 0])
+    const response = request.slice()
+    response[4] = 73
+    response[9] = 1
+    expect(parseBatteryStatus(response)).toEqual({ percentage: 73, charging: true })
+    expect(() => parseBatteryStatus(new Uint8Array(9))).toThrow('电量数据不完整')
+    response[4] = 101
+    expect(() => parseBatteryStatus(response)).toThrow('电量数值超出范围')
+  })
+
+  it('builds and parses the exact P711 lift-off-distance packets', () => {
+    expect(Array.from(buildGetLiftOffDistanceRequest().slice(0, 8))).toEqual([
+      0x12, 0x06, 0, 0, 0, 0, 0, 0,
+    ])
+    expect(Array.from(buildSetLiftOffDistanceRequest('high').slice(0, 8))).toEqual([
+      0x51, 0x35, 0xff, 0, 0xff, 1, 0, 0,
+    ])
+    expect(buildSetLiftOffDistanceRequest('low')[5]).toBe(0)
+    const response = buildGetLiftOffDistanceRequest()
+    response[7] = 1
+    expect(parseLiftOffDistance(response)).toBe('high')
+    response[7] = 2
+    expect(() => parseLiftOffDistance(response)).toThrow('未知的抬升距离')
+    expect(() => parseLiftOffDistance(new Uint8Array(7))).toThrow('抬升距离数据不完整')
   })
 
   it('parses a device without an active DPI preset', () => {

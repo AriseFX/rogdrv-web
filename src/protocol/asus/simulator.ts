@@ -23,6 +23,7 @@ const makeProfile = (profileIndex: number): VirtualProfile => ({
     debounce: 12,
     angleSnapping: false,
   },
+  sensor: { liftOffDistance: 'low' },
   dpiColors: [
     { r: 0xff, g: 0x00, b: 0x00 },
     { r: 0xc1, g: 0x00, b: 0xff },
@@ -104,6 +105,13 @@ export class VirtualAsusDevice implements QueryTransport {
         response[7] = profile.led.color.g
         response[8] = profile.led.color.b
         break
+      case ASUS_COMMAND.getBattery:
+        response[4] = 68
+        response[9] = 0
+        break
+      case ASUS_COMMAND.getLiftOffDistance:
+        response[7] = profile.sensor.liftOffDistance === 'high' ? 1 : 0
+        break
       case ASUS_COMMAND.setProfile:
         this.profileIndex = request[2]
         break
@@ -153,6 +161,9 @@ export class VirtualAsusDevice implements QueryTransport {
           brightness: request[5],
           color: { r: request[6], g: request[7], b: request[8] },
         }
+        break
+      case ASUS_COMMAND.setLiftOffDistance:
+        profile.sensor.liftOffDistance = request[5] === 1 ? 'high' : 'low'
         break
       case ASUS_COMMAND.save:
         break

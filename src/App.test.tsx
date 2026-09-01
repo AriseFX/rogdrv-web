@@ -10,6 +10,7 @@ import {
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AsusCommandRejectedError } from './protocol/asus/codec'
+import { createMouseBackup, serializeMouseBackup } from './protocol/asus/backup'
 import { AsusMouse } from './protocol/asus/mouse'
 import { VirtualAsusDevice } from './protocol/asus/simulator'
 
@@ -109,6 +110,8 @@ describe('demo mode', () => {
     expect(screen.getByText('主 / 接收器固件').parentElement).toHaveTextContent(
       '01.08.03 / 01.04.02',
     )
+    expect(screen.getByText('电量').parentElement).toHaveTextContent('68%')
+    expect(screen.getByText('电量').parentElement).toHaveTextContent('使用电池')
     expect(document.querySelector('.content-panel')).toContainElement(
       screen.getByText('ROGDRV WEB · COMMUNITY PROJECT').closest('footer'),
     )
@@ -176,6 +179,9 @@ describe('demo mode', () => {
     await user.click(screen.getByRole('button', { name: '按键去抖 32ms' }))
     expect(screen.getByRole('button', { name: '按键去抖 32ms' })).toHaveAttribute('aria-pressed', 'true')
     await user.click(screen.getByRole('checkbox', { name: /直线修正/ }))
+    await user.click(screen.getByRole('button', { name: '高抬升距离' }))
+    expect(screen.getByRole('button', { name: '高抬升距离' })).toHaveAttribute('aria-pressed', 'true')
+    await user.click(screen.getByRole('button', { name: '恢复标准表面校准' }))
     await user.click(screen.getByRole('button', { name: 'Logo 灯效模式 呼吸' }))
     expect(screen.getByRole('button', { name: 'Logo 灯效模式 呼吸' })).toHaveAttribute('aria-pressed', 'true')
     await user.click(screen.getByRole('button', { name: 'Logo 灯效模式 彩虹' }))
@@ -266,6 +272,270 @@ describe('demo mode', () => {
     expect(screen.getByRole('button', { name: '选择 DPI 档位 3' })).toBeInTheDocument()
   })
 
+  it('re-reads a clean device profile but protects unsaved edits from refresh', async () => {
+    window.history.replaceState({}, '', '/?demo=1')
+    const { default: App } = await import('./App')
+    const user = userEvent.setup()
+    render(<App />)
+
+    const refreshButton = await screen.findByRole('button', { name: '重新读取设备' })
+    await user.click(refreshButton)
+    await waitFor(() => expect(refreshButton).toBeEnabled())
+
+    await user.click(screen.getByRole('button', { name: '选择 DPI 档位 1' }))
+    fireEvent.change(screen.getByLabelText('DPI 档位 1 数值'), {
+      target: { value: '1200' },
+    })
+    await user.click(screen.getByRole('button', { name: '导出配置备份' }))
+    await user.click(refreshButton)
+
+    expect(screen.getByLabelText('DPI 档位 1 数值')).toHaveValue(1200)
+    expect(screen.getByRole('alert')).toHaveTextContent('当前有未应用的更改')
+  })
+
+  it('stops an apply when the device changed after the editor snapshot was loaded', async () => {
+    window.history.replaceState({}, '', '/?demo=1')
+    const mouseModule = await import('./protocol/asus/mouse')
+    const applyChanges = vi.spyOn(mouseModule.AsusMouse.prototype, 'applyChanges')
+    const { default: App } = await import('./App')
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: '选择 DPI 档位 1' }))
+    fireEvent.change(await screen.findByLabelText('DPI 档位 1 数值'), {
+      target: { value: '1200' },
+    })
+    const changedOnDevice = await new AsusMouse(new VirtualAsusDevice()).readCurrentProfile()
+    changedOnDevice.performance.pollingRate = 500
+    vi.spyOn(mouseModule.AsusMouse.prototype, 'readCurrentProfile').mockResolvedValueOnce(changedOnDevice)
+
+    await user.click(screen.getByRole('button', { name: '应用到设备' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('设备配置已在外部发生变化')
+    expect(screen.getByLabelText('DPI 档位 1 数值')).toHaveValue(1200)
+    expect(applyChanges).not.toHaveBeenCalled()
+  })
+
+  it('exports all profiles and previews a backup before restoring it', async () => {
+    window.history.replaceState({}, '', '/?demo=1')
+    const createObjectURL = vi.fn((_blob: Blob) => 'blob:mouse-backup')
+    const revokeObjectURL = vi.fn()
+    Object.defineProperties(URL, {
+      createObjectURL: { configurable: true, value: createObjectURL },
+      revokeObjectURL: { configurable: true, value: revokeObjectURL },
+    })
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    const { default: App } = await import('./App')
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: '导出配置备份' }))
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalledOnce())
+    expect(createObjectURL.mock.calls[0][0]).toBeInstanceOf(Blob)
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:mouse-backup')
+
+    const profiles = await new AsusMouse(new VirtualAsusDevice()).readAllProfiles()
+    profiles[0].performance.dpi[0] = 1200
+    const backup = createMouseBackup(
+      profiles,
+      { vendorId: 0x0b05, productId: 0x1a70, productName: 'ROG Mouse' },
+      0,
+      '2026-09-01T09:00:00.000Z',
+    )
+    const file = new File([serializeMouseBackup(backup)], 'mouse-backup.json', {
+      type: 'application/json',
+    })
+    fireEvent.change(screen.getByLabelText('选择配置备份文件'), {
+      target: { files: [file] },
+    })
+
+    const dialog = await screen.findByRole('dialog', { name: '配置恢复预览' })
+    expect(dialog).toHaveTextContent('5 个板载配置')
+    expect(dialog).toHaveTextContent('2026-09-01')
+    await user.click(screen.getByRole('button', { name: '取消' }))
+    expect(dialog).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '导入配置备份' }))
+    fireEvent.change(screen.getByLabelText('选择配置备份文件'), {
+      target: { files: [file] },
+    })
+    const restoredDialog = await screen.findByRole('dialog', { name: '配置恢复预览' })
+    await user.click(screen.getByRole('button', { name: '恢复到设备' }))
+    await waitFor(() => expect(restoredDialog).not.toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: '选择 DPI 档位 1' }))
+    expect(screen.getByLabelText('DPI 档位 1 数值')).toHaveValue(1200)
+  })
+
+  it('handles empty, malformed, and unreadable backup-file selections', async () => {
+    window.history.replaceState({}, '', '/?demo=1')
+    const { default: App } = await import('./App')
+    render(<App />)
+    const input = await screen.findByLabelText('选择配置备份文件')
+
+    fireEvent.change(input, { target: { files: [] } })
+    fireEvent.change(input, {
+      target: { files: [new File(['{'], 'broken.json', { type: 'application/json' })] },
+    })
+    expect(await screen.findByRole('alert')).toHaveTextContent('不是有效的 JSON')
+
+    const readAsText = vi.spyOn(FileReader.prototype, 'readAsText').mockImplementation(function (this: FileReader) {
+      this.dispatchEvent(new Event('error'))
+    })
+    fireEvent.change(input, {
+      target: { files: [new File(['{}'], 'unreadable.json', { type: 'application/json' })] },
+    })
+    expect(await screen.findByRole('alert')).toHaveTextContent('无法读取备份文件')
+    expect(readAsText).toHaveBeenCalledOnce()
+
+    readAsText.mockImplementation(function (this: FileReader) {
+      this.dispatchEvent(new Event('load'))
+    })
+    fireEvent.change(input, {
+      target: { files: [new File(['{}'], 'empty-result.json', { type: 'application/json' })] },
+    })
+    expect(await screen.findByRole('alert')).toHaveTextContent('不是有效的 JSON')
+  })
+
+  it('finishes a pending backup read safely after the page unmounts', async () => {
+    window.history.replaceState({}, '', '/?demo=1')
+    const readers: FileReader[] = []
+    vi.spyOn(FileReader.prototype, 'readAsText').mockImplementation(function (this: FileReader) {
+      readers.push(this)
+    })
+    const { default: App } = await import('./App')
+    const view = render(<App />)
+    fireEvent.change(await screen.findByLabelText('选择配置备份文件'), {
+      target: { files: [new File(['{}'], 'pending.json', { type: 'application/json' })] },
+    })
+    view.unmount()
+    await act(async () => {
+      readers[0]?.dispatchEvent(new Event('load'))
+      await Promise.resolve()
+    })
+  })
+
+  it('keeps an incompatible backup preview open when device validation rejects restore', async () => {
+    window.history.replaceState({}, '', '/?demo=1')
+    const { default: App } = await import('./App')
+    render(<App />)
+    const profiles = await new AsusMouse(new VirtualAsusDevice()).readAllProfiles()
+    const backup = createMouseBackup(
+      profiles,
+      { vendorId: 0x0b05, productId: 0xffff, productName: 'Other Mouse' },
+      0,
+    )
+    fireEvent.change(await screen.findByLabelText('选择配置备份文件'), {
+      target: {
+        files: [new File([serializeMouseBackup(backup)], 'foreign.json', { type: 'application/json' })],
+      },
+    })
+    const dialog = await screen.findByRole('dialog', { name: '配置恢复预览' })
+    fireEvent.click(screen.getByRole('button', { name: '恢复到设备' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('不属于受支持')
+    expect(dialog).toBeInTheDocument()
+  })
+
+  it('restores standard surface calibration while the editor is clean', async () => {
+    window.history.replaceState({}, '', '/?demo=1')
+    const mouseModule = await import('./protocol/asus/mouse')
+    const reset = vi.spyOn(mouseModule.AsusMouse.prototype, 'resetSurfaceCalibration')
+    const { default: App } = await import('./App')
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: '恢复标准表面校准' }))
+    await waitFor(() => expect(reset).toHaveBeenCalledOnce())
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('guards and reports every profile-maintenance failure without losing the draft', async () => {
+    window.history.replaceState({}, '', '/?demo=1')
+    const mouseModule = await import('./protocol/asus/mouse')
+    const { useAsusMouse } = await import('./hooks/useAsusMouse')
+    const { result } = renderHook(() => useAsusMouse())
+    const profiles = await new AsusMouse(new VirtualAsusDevice()).readAllProfiles()
+    const backup = createMouseBackup(
+      profiles,
+      { vendorId: 0x0b05, productId: 0x1a70, productName: 'ROG Mouse' },
+      0,
+    )
+
+    act(() => {
+      result.current.setDraft((current) => current ? {
+        ...current,
+        performance: { ...current.performance, pollingRate: 500 },
+      } : current)
+    })
+    await act(async () => {
+      await expect(result.current.refresh()).resolves.toBe(false)
+      await expect(result.current.exportBackup()).resolves.toBeNull()
+      await expect(result.current.restoreBackup(backup)).resolves.toBe(false)
+      await expect(result.current.resetSurfaceCalibration()).resolves.toBe(false)
+    })
+    expect(result.current.error).toContain('未应用的更改')
+
+    act(() => result.current.discard())
+    const foreignBackup = structuredClone(backup)
+    foreignBackup.device.productId = 0xffff
+    await act(async () => {
+      await expect(result.current.restoreBackup(foreignBackup)).resolves.toBe(false)
+    })
+    expect(result.current.error).toContain('不属于受支持')
+
+    vi.spyOn(mouseModule.AsusMouse.prototype, 'readCurrentProfile')
+      .mockRejectedValueOnce(new Error('refresh failed'))
+      .mockRejectedValueOnce('refresh failed as text')
+    await act(async () => {
+      await result.current.refresh()
+    })
+    expect(result.current.error).toBe('refresh failed')
+    await act(async () => {
+      await result.current.refresh()
+    })
+    expect(result.current.error).toBe('refresh failed as text')
+
+    vi.spyOn(mouseModule.AsusMouse.prototype, 'readAllProfiles')
+      .mockRejectedValueOnce(new Error('backup failed'))
+      .mockRejectedValueOnce('backup failed as text')
+    await act(async () => { await result.current.exportBackup() })
+    expect(result.current.error).toBe('backup failed')
+    await act(async () => { await result.current.exportBackup() })
+    expect(result.current.error).toBe('backup failed as text')
+
+    vi.spyOn(mouseModule.AsusMouse.prototype, 'restoreProfiles')
+      .mockRejectedValueOnce(new Error('restore failed'))
+      .mockRejectedValueOnce('restore failed as text')
+    await act(async () => { await result.current.restoreBackup(backup) })
+    expect(result.current.error).toBe('restore failed')
+    await act(async () => { await result.current.restoreBackup(backup) })
+    expect(result.current.error).toBe('restore failed as text')
+
+    vi.spyOn(mouseModule.AsusMouse.prototype, 'resetSurfaceCalibration')
+      .mockRejectedValueOnce(new Error('calibration failed'))
+      .mockRejectedValueOnce('calibration failed as text')
+    await act(async () => { await result.current.resetSurfaceCalibration() })
+    expect(result.current.error).toBe('calibration failed')
+    await act(async () => { await result.current.resetSurfaceCalibration() })
+    expect(result.current.error).toBe('calibration failed as text')
+  })
+
+  it('keeps battery-read failures optional for both Error and non-Error causes', async () => {
+    window.history.replaceState({}, '', '/?demo=1')
+    const mouseModule = await import('./protocol/asus/mouse')
+    const batteryRead = vi.spyOn(mouseModule.AsusMouse.prototype, 'readBatteryStatus')
+      .mockRejectedValueOnce(new Error('battery asleep'))
+      .mockRejectedValueOnce('battery unavailable')
+    const { useAsusMouse } = await import('./hooks/useAsusMouse')
+    const { result } = renderHook(() => useAsusMouse())
+
+    await act(async () => { await result.current.reconnect() })
+    expect(result.current.battery).toBeNull()
+    expect(result.current.logs.at(-2)?.message).toContain('battery asleep')
+    await act(async () => { await result.current.reconnect() })
+    expect(result.current.logs.at(-2)?.message).toContain('battery unavailable')
+    expect(batteryRead).toHaveBeenCalledTimes(2)
+  })
+
   it('can disconnect and reconnect the virtual mouse', async () => {
     window.history.replaceState({}, '', '/?demo=1')
     const { default: App } = await import('./App')
@@ -328,6 +598,10 @@ describe('WebHID connection', () => {
       await expect(result.current.reconnect()).resolves.toBe(false)
       await result.current.switchProfile(1)
       await result.current.apply()
+      await expect(result.current.refresh()).resolves.toBe(false)
+      await expect(result.current.exportBackup()).resolves.toBeNull()
+      await expect(result.current.restoreBackup({} as never)).resolves.toBe(false)
+      await expect(result.current.resetSurfaceCalibration()).resolves.toBe(false)
       result.current.discard()
       await result.current.disconnect()
     })
@@ -482,6 +756,7 @@ describe('WebHID connection', () => {
         draft: profile,
         setDraft,
         diagnostics: null,
+        battery: { percentage: 50, charging: true },
         logs: [],
         error: null,
         busy: false,
@@ -490,6 +765,10 @@ describe('WebHID connection', () => {
         reconnect: vi.fn(),
         disconnect: vi.fn(),
         switchProfile: vi.fn(),
+        refresh: vi.fn(),
+        exportBackup: vi.fn(),
+        restoreBackup: vi.fn(),
+        resetSurfaceCalibration: vi.fn(),
         apply: vi.fn(),
         discard: vi.fn(),
       }),
@@ -498,6 +777,7 @@ describe('WebHID connection', () => {
     render(<App />)
 
     expect(screen.getAllByText('未知动作 AB')).toHaveLength(2)
+    expect(screen.getByText('电量').parentElement).toHaveTextContent('50% · 正在充电')
     expect(screen.getByText('保留')).toBeInTheDocument()
     expect(screen.getByText('未知模式')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '选择 DPI 档位 1' }))
