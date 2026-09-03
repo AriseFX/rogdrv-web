@@ -58,6 +58,34 @@ describe('AsusMouse', () => {
     expect(transport.requests).toHaveLength(0)
   })
 
+  it('keeps the primary left button locked and rejects it before any device write', async () => {
+    const transport = new FakeTransport()
+    const mouse = new AsusMouse(transport)
+    const current = baseProfile()
+    const draft = structuredClone(current)
+    draft.buttons[0].action = { kind: 'mouse', code: 0xf1, label: '右键' }
+
+    await expect(mouse.applyChanges(current, draft)).rejects.toThrow(
+      '左键是系统保留按键，不能重新映射',
+    )
+    expect(transport.requests).toHaveLength(0)
+  })
+
+  it('preflights every backup profile before restoring a protected left button', async () => {
+    const transport = new FakeTransport()
+    const mouse = new AsusMouse(transport)
+    const profiles = Array.from({ length: 5 }, (_, index) => ({
+      ...structuredClone(baseProfile()),
+      profileIndex: index,
+    }))
+    profiles[3].buttons[0].action = { kind: 'keyboard', code: 0x04, label: 'A' }
+
+    await expect(mouse.restoreProfiles(profiles, 0)).rejects.toThrow(
+      '左键是系统保留按键，不能重新映射',
+    )
+    expect(transport.requests).toHaveLength(0)
+  })
+
   it('writes only changed fields and commits once', async () => {
     const transport = new FakeTransport()
     const mouse = new AsusMouse(transport)

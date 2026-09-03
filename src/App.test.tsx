@@ -112,7 +112,7 @@ describe('demo mode', () => {
     expect(screen.getByText('主 / 接收器固件').parentElement).toHaveTextContent(
       '01.08.03 / 01.04.02',
     )
-    expect(screen.getByText('电量').parentElement).toHaveTextContent('68%')
+    expect(document.querySelector('.device-meta')).toHaveTextContent('电量68%')
     expect(screen.getByRole('img', { name: '电量 68%，使用电池' })).toBeInTheDocument()
     expect(document.querySelector('.battery-icon')).toHaveAttribute('data-level', 'normal')
     expect(document.querySelector('.battery-icon')).not.toHaveAttribute('data-charging')
@@ -163,6 +163,64 @@ describe('demo mode', () => {
     const contextMenu = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
     window.dispatchEvent(contextMenu)
     expect(contextMenu.defaultPrevented).toBe(true)
+  })
+
+  it('switches feature tabs and selects a mapping from the mouse diagram', async () => {
+    window.history.replaceState({}, '', '/?demo=1')
+    const { default: App } = await import('./App')
+    const user = userEvent.setup()
+    render(<App />)
+
+    const buttonsTab = await screen.findByRole('tab', { name: /按键.*BUTTONS/ })
+    const performanceTab = screen.getByRole('tab', { name: /性能.*PERFORMANCE/ })
+    expect(buttonsTab).toHaveAttribute('aria-selected', 'true')
+    expect(document.querySelector('.app-shell')).toHaveAttribute('data-tab', 'buttons')
+
+    await user.click(performanceTab)
+    expect(performanceTab).toHaveAttribute('aria-selected', 'true')
+    expect(document.querySelector('#panel-performance')).toHaveClass('is-active')
+    expect(document.querySelector('#panel-buttons')).toHaveAttribute('inert')
+    expect(screen.queryByRole('img', { name: '通用游戏鼠标黑色示意图' })).not.toBeInTheDocument()
+
+    await user.click(buttonsTab)
+    expect(screen.getByRole('img', { name: '通用游戏鼠标黑色示意图' })).toBeInTheDocument()
+    expect(screen.getByText('左键已锁定')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '键盘按键' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '映射为右键' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: '在鼠标图上编辑侧键 · 前进映射' }))
+    expect(screen.getByRole('button', { name: '编辑侧键 · 前进映射' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.queryByText('左键已锁定')).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '键盘按键' })).toBeEnabled()
+  })
+
+  it('uses the styled onboard-profile menu and supports keyboard dismissal', async () => {
+    window.history.replaceState({}, '', '/?demo=1')
+    const { default: App } = await import('./App')
+    const user = userEvent.setup()
+    render(<App />)
+
+    const trigger = await screen.findByRole('button', {
+      name: '顶部配置文件，当前为配置文件 1',
+    })
+    await user.click(trigger)
+    expect(screen.getByRole('listbox', { name: '选择板载配置文件' })).toHaveClass(
+      'profile-picker-menu',
+    )
+    expect(screen.getByRole('option', { name: '切换到配置文件 1，当前启用' }))
+      .toHaveAttribute('aria-selected', 'true')
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('listbox', { name: '选择板载配置文件' })).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+
+    await user.click(trigger)
+    await user.click(screen.getByRole('option', { name: '切换到配置文件 2' }))
+    expect(await screen.findByRole('button', {
+      name: '顶部配置文件，当前为配置文件 2',
+    })).toBeInTheDocument()
   })
 
   it('edits and discards every exposed control and shows protocol diagnostics', async () => {
@@ -780,8 +838,8 @@ describe('WebHID connection', () => {
     const { default: App } = await import('./App')
     render(<App />)
 
-    expect(screen.getAllByText('未知动作 AB')).toHaveLength(2)
-    expect(screen.getByText('电量').parentElement).toHaveTextContent('20%充电中')
+    expect(screen.getAllByText('未知动作 AB')).toHaveLength(3)
+    expect(document.querySelector('.device-meta')).toHaveTextContent('20%充电中')
     expect(screen.getByRole('img', { name: '电量 20%，正在充电' })).toBeInTheDocument()
     expect(document.querySelector('.battery-icon')).toHaveAttribute('data-level', 'low')
     expect(document.querySelector('.battery-icon')).toHaveAttribute('data-charging', 'true')
@@ -797,7 +855,7 @@ describe('WebHID connection', () => {
 
     await userEvent.setup().click(screen.getByRole('button', { name: /设备诊断/ }))
     expect(screen.getByText('尚无通信记录')).toBeInTheDocument()
-    expect(screen.getAllByText('—')).toHaveLength(3)
+    expect(screen.getAllByText('—')).toHaveLength(4)
   })
 
   it('resets the UI even if closing the device fails during manual disconnect', async () => {

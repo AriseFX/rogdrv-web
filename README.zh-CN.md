@@ -4,6 +4,8 @@
 
 一个基于 React、TypeScript 和 WebHID 的 ASUS ROG 游戏鼠标开源网页配置器。
 
+> **非官方社区项目：**ROGDRV Web 与 ASUS 或 ROG 没有官方关联，也未得到其背书或支持。产品及品牌名称仅用于说明硬件兼容性。
+
 [打开 ROGDRV Web](https://arisefx.github.io/rogdrv-web/) · 需要桌面版 Chromium 浏览器
 
 ROGDRV Web 通过 Chromium 浏览器直接与受支持的鼠标通信，不需要安装常驻后台程序，也不需要账户。除非你明确将更改写入鼠标板载内存，否则配置数据不会离开当前浏览器会话。

@@ -37,9 +37,11 @@ export const SUPPORTED_DEVICES: SupportedDevice[] = [
 
 export const POLLING_RATES = [125, 250, 500, 1000] as const
 export const DEBOUNCE_TIMES = [4, 8, 12, 16, 20, 24, 28, 32] as const
+export const PRIMARY_BUTTON_SOURCE_CODE = 0xf0
+export const PRIMARY_BUTTON_ACTION_CODE = 0xf0
 
 export const PHYSICAL_BUTTONS = [
-  { sourceCode: 0xf0, label: '左键' },
+  { sourceCode: PRIMARY_BUTTON_SOURCE_CODE, label: '左键' },
   { sourceCode: 0xf1, label: '右键' },
   { sourceCode: 0xf2, label: '滚轮按下' },
   { sourceCode: 0xe4, label: '侧键 · 后退' },
@@ -50,7 +52,7 @@ export const PHYSICAL_BUTTONS = [
 ] as const
 
 export const MOUSE_ACTIONS: ButtonAction[] = [
-  { kind: 'mouse', code: 0xf0, label: '左键' },
+  { kind: 'mouse', code: PRIMARY_BUTTON_ACTION_CODE, label: '左键' },
   { kind: 'mouse', code: 0xf1, label: '右键' },
   { kind: 'mouse', code: 0xf2, label: '中键' },
   { kind: 'mouse', code: 0xe4, label: '后退' },

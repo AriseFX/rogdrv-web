@@ -7,6 +7,7 @@ import {
   DEBOUNCE_TIMES,
   LED_MODES,
   POLLING_RATES,
+  PRIMARY_BUTTON_SOURCE_CODE,
 } from './protocol/asus/constants'
 import { normalizeDpi } from './protocol/asus/codec'
 import { parseMouseBackup, serializeMouseBackup } from './protocol/asus/backup'
@@ -42,6 +43,28 @@ const DPI_MAX = 36_000
 const DPI_SLIDER_STEPS = 1000
 const DPI_SCALE_MARKS = [400, 800, 1200, 1600, 2400, 3200, 6400, 12_000, 36_000]
 
+type FeatureTab = 'buttons' | 'performance' | 'lighting' | 'calibration' | 'battery' | 'firmware'
+
+const FEATURE_TABS: Array<{ id: FeatureTab, label: string, kicker: string }> = [
+  { id: 'buttons', label: '按键', kicker: 'BUTTONS' },
+  { id: 'performance', label: '性能', kicker: 'PERFORMANCE' },
+  { id: 'lighting', label: '灯光', kicker: 'LIGHTING' },
+  { id: 'calibration', label: '校准', kicker: 'CALIBRATION' },
+  { id: 'battery', label: '电量', kicker: 'BATTERY' },
+  { id: 'firmware', label: '固件更新', kicker: 'FIRMWARE' },
+]
+
+const BUTTON_CALLOUT_POSITIONS = [
+  'left',
+  'right',
+  'wheel',
+  'back',
+  'forward',
+  'dpi',
+  'scroll-up',
+  'scroll-down',
+] as const
+
 function dpiToSliderValue(dpi: number) {
   return Math.round(
     Math.log(normalizeDpi(dpi) / DPI_MIN)
@@ -57,19 +80,43 @@ function sliderValueToDpi(value: number) {
 function MouseIllustration({
   connected,
   dpiPreset,
+  buttons,
+  selectedButtonIndex,
+  interactive,
+  onSelectButton,
 }: {
   connected: boolean
   dpiPreset: number | null | undefined
+  buttons?: ProfileSnapshot['buttons']
+  selectedButtonIndex?: number
+  interactive?: boolean
+  onSelectButton?: (index: number, actionKind: ButtonAction['kind']) => void
 }) {
   return (
-    <div className={`mouse-visual ${connected ? 'is-connected' : ''}`}>
+    <div className={`mouse-visual ${connected ? 'is-connected' : ''} ${interactive ? 'is-mapping' : ''}`}>
       <div className="mouse-stage-grid" />
       <div className="mouse-orbit orbit-one" />
       <div className="mouse-orbit orbit-two" />
-      <div className="mouse-callout callout-left" aria-hidden="true"><b>01</b><span>左键</span></div>
-      <div className="mouse-callout callout-right" aria-hidden="true"><span>右键</span><b>02</b></div>
-      <div className="mouse-callout callout-forward" aria-hidden="true"><b>05</b><span>前进</span></div>
-      <div className="mouse-callout callout-back" aria-hidden="true"><b>04</b><span>后退</span></div>
+      {interactive && buttons ? buttons.map((button, index) => (
+        <button
+          key={`${button.sourceCode}-${index}`}
+          type="button"
+          className={`mouse-callout mapping-callout callout-${BUTTON_CALLOUT_POSITIONS[index]} ${selectedButtonIndex === index ? 'selected' : ''}`}
+          aria-label={`在鼠标图上编辑${button.sourceLabel}映射`}
+          aria-pressed={selectedButtonIndex === index}
+          onClick={() => onSelectButton?.(index, button.action.kind)}
+        >
+          <b>{String(index + 1).padStart(2, '0')}</b>
+          <span><small>{button.sourceLabel}</small>{button.action.label}</span>
+        </button>
+      )) : (
+        <>
+          <div className="mouse-callout callout-left" aria-hidden="true"><b>01</b><span>左键</span></div>
+          <div className="mouse-callout callout-right" aria-hidden="true"><span>右键</span><b>02</b></div>
+          <div className="mouse-callout callout-forward" aria-hidden="true"><b>05</b><span>前进</span></div>
+          <div className="mouse-callout callout-back" aria-hidden="true"><b>04</b><span>后退</span></div>
+        </>
+      )}
       <div className="mouse-model" data-color="black">
         <div className="mouse-glow" />
         <svg
@@ -156,19 +203,47 @@ function App() {
     discard,
   } = useAsusMouse()
   const [showLogs, setShowLogs] = useState(false)
+  const [activeTab, setActiveTab] = useState<FeatureTab>('buttons')
   const [reconnectLabel, setReconnectLabel] = useState('使用已授权设备')
   const [dpiSelection, setDpiSelection] = useState<{ profileIndex: number, stage: number } | null>(null)
   const [selectedButtonIndex, setSelectedButtonIndex] = useState(0)
   const [buttonActionGroup, setButtonActionGroup] = useState<'mouse' | 'keyboard'>('mouse')
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const [pendingBackup, setPendingBackup] = useState<MouseBackup | null>(null)
   const [backupFileError, setBackupFileError] = useState<string | null>(null)
   const backupInputRef = useRef<HTMLInputElement>(null)
+  const profilePickerRef = useRef<HTMLDivElement>(null)
+  const profileTriggerRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     const preventContextMenu = (event: MouseEvent) => event.preventDefault()
     window.addEventListener('contextmenu', preventContextMenu)
     return () => window.removeEventListener('contextmenu', preventContextMenu)
   }, [])
+
+  useEffect(() => {
+    if (!profileMenuOpen) return
+    const focusFrame = window.requestAnimationFrame(() => {
+      profilePickerRef.current
+        ?.querySelector<HTMLButtonElement>('[role="option"][aria-selected="true"]')
+        ?.focus()
+    })
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!profilePickerRef.current?.contains(event.target as Node)) setProfileMenuOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setProfileMenuOpen(false)
+      profileTriggerRef.current?.focus()
+    }
+    document.addEventListener('pointerdown', closeOnOutsideClick)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      window.cancelAnimationFrame(focusFrame)
+      document.removeEventListener('pointerdown', closeOnOutsideClick)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [profileMenuOpen])
 
   const updateDraft = (updater: (current: ProfileSnapshot) => ProfileSnapshot) => {
     setDraft((current) => (current ? updater(current) : current))
@@ -226,7 +301,9 @@ function App() {
     updateDraft((current) => ({
       ...current,
       buttons: current.buttons.map((button, buttonIndex) =>
-        buttonIndex === index ? { ...button, action } : button,
+        buttonIndex === index && button.sourceCode !== PRIMARY_BUTTON_SOURCE_CODE
+          ? { ...button, action }
+          : button,
       ),
     }))
   }
@@ -295,6 +372,7 @@ function App() {
   const selectedDpi = draft?.performance.dpi[selectedDpiIndex] ?? DPI_MIN
   const selectedDpiColor = draft?.dpiColors[selectedDpiIndex] ?? { r: 255, g: 49, b: 80 }
   const selectedButton = draft?.buttons[selectedButtonIndex]
+  const isPrimaryButtonLocked = selectedButton?.sourceCode === PRIMARY_BUTTON_SOURCE_CODE
   const ledColorHex = draft ? rgbToHex(draft.led.color) : '#ff3150'
   const ledEditorMode = draft?.led.mode === 0xf0
     ? 'off'
@@ -321,18 +399,87 @@ function App() {
     rainbow: '颜色由灯效自动循环',
     solid: ledColorHex.toUpperCase(),
   }[ledEditorMode]
+  const activeFeature = FEATURE_TABS.find((tab) => tab.id === activeTab) ?? FEATURE_TABS[0]
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-tab={activeTab}>
+      <a className="skip-link" href="#main-content">跳到主要设置</a>
       <header className="topbar">
-        <a className="brand" href="#top" aria-label="ROG Driver Web 首页">
+        <a className="brand" href="#main-content" aria-label="ROG Driver Web 首页">
           <span className="brand-mark">R</span>
           <span>
-            <strong>ROGDRV</strong>
-            <small>WEB CONTROL</small>
+            <strong>ROGDRV <i>//</i> 战刃 III 无线 AIMPOINT</strong>
+            <small>OPEN WEBHID CONTROL SYSTEM</small>
           </span>
         </a>
         <div className="topbar-actions">
+          {connected && profile && (
+            <div
+              ref={profilePickerRef}
+              className={`header-profile-picker ${profileMenuOpen ? 'is-open' : ''}`}
+            >
+              <button
+                ref={profileTriggerRef}
+                type="button"
+                className="profile-picker-trigger"
+                aria-label={`顶部配置文件，当前为配置文件 ${profile.profileIndex + 1}`}
+                aria-haspopup="listbox"
+                aria-expanded={profileMenuOpen}
+                disabled={busy || dirty}
+                onClick={() => setProfileMenuOpen((open) => !open)}
+              >
+                <span>配置文件</span>
+                <strong>配置文件 {profile.profileIndex + 1}</strong>
+                <svg aria-hidden="true" viewBox="0 0 12 8"><path d="M1 1.5 6 6.5l5-5" /></svg>
+              </button>
+              {profileMenuOpen && (
+                <div
+                  className="profile-picker-menu"
+                  role="listbox"
+                  aria-label="选择板载配置文件"
+                  onKeyDown={(event) => {
+                    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+                    event.preventDefault()
+                    const options = Array.from(
+                      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="option"]'),
+                    )
+                    const currentIndex = options.indexOf(document.activeElement as HTMLButtonElement)
+                    const nextIndex = event.key === 'Home'
+                      ? 0
+                      : event.key === 'End'
+                        ? options.length - 1
+                        : (currentIndex + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length
+                    options[nextIndex]?.focus()
+                  }}
+                >
+                  <div className="profile-picker-menu-heading">
+                    <span>板载配置</span><small>5 SLOTS</small>
+                  </div>
+                  {Array.from({ length: 5 }, (_, index) => {
+                    const active = profile.profileIndex === index
+                    return (
+                      <button
+                        key={index}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        aria-label={`切换到配置文件 ${index + 1}${active ? '，当前启用' : ''}`}
+                        className={active ? 'selected' : ''}
+                        onClick={() => {
+                          setProfileMenuOpen(false)
+                          if (!active) void switchProfile(index)
+                        }}
+                      >
+                        <b>{String(index + 1).padStart(2, '0')}</b>
+                        <span><strong>配置文件 {index + 1}</strong><small>{active ? '当前启用' : '板载存储'}</small></span>
+                        <i aria-hidden="true" />
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
           <span className={`connection-pill ${connected ? 'online' : ''}`}>
             <span className="status-dot" />
             {connected ? '设备在线' : '等待设备'}
@@ -369,13 +516,44 @@ function App() {
         </div>
       </header>
 
-      <main id="top" className="workspace">
+      <nav className="feature-tabs" aria-label="鼠标设置分类">
+        <div role="tablist" aria-label="设备功能">
+          {FEATURE_TABS.map((tab, index) => (
+            <button
+              key={tab.id}
+              id={`tab-${tab.id}`}
+              type="button"
+              role="tab"
+              aria-controls={`panel-${tab.id}`}
+              aria-selected={activeTab === tab.id}
+              className={activeTab === tab.id ? 'active' : ''}
+              disabled={!connected || !draft}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              <b>{String(index + 1).padStart(2, '0')}</b>
+              <span>{tab.label}</span>
+              <small>{tab.kicker}</small>
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      <main id="main-content" className="workspace">
         <aside className="device-panel">
           <div className="device-heading">
             <span className="eyebrow">TARGET DEVICE</span>
             <span className="device-index">P711</span>
           </div>
-          <MouseIllustration connected={connected} dpiPreset={draft?.dpiPreset ?? profile?.dpiPreset} />
+          {activeTab === 'buttons' && (
+            <MouseIllustration
+              connected={connected}
+              dpiPreset={draft?.dpiPreset ?? profile?.dpiPreset}
+              buttons={draft?.buttons}
+              selectedButtonIndex={selectedButtonIndex}
+              interactive={Boolean(draft)}
+              onSelectButton={selectButtonMapping}
+            />
+          )}
           <div className="device-title">
             <h1>战刃 III</h1>
             <p>Wireless AimPoint 36K</p>
@@ -503,7 +681,23 @@ function App() {
               </section>
             </div>
           ) : (
-            <div className="dashboard">
+            <>
+              <div className="feature-heading">
+                <div>
+                  <span>{activeFeature.kicker} / DEVICE CONTROL</span>
+                  <h2>{activeFeature.label}</h2>
+                  <p>配置文件 {profile ? profile.profileIndex + 1 : '—'} · 所有更改仅在应用后写入板载内存</p>
+                </div>
+                <button type="button" className="panel-reset" onClick={discard} disabled={!dirty || busy}>重置未保存更改</button>
+              </div>
+              <div className="dashboard">
+              <div
+                id="panel-performance"
+                role="tabpanel"
+                aria-labelledby="tab-performance"
+                className={`tab-panel ${activeTab === 'performance' ? 'is-active' : ''}`}
+                inert={activeTab !== 'performance'}
+              >
               <section className="control-card dpi-card">
                 <div className="card-heading">
                   <div><span className="card-index">01</span><div><h3>DPI 灵敏度</h3><p>{draft.dpiPreset === null ? '当前档未知' : `当前 ${draft.performance.dpi[draft.dpiPreset].toLocaleString()} DPI`} · 50 DPI 步进</p></div></div>
@@ -680,33 +874,19 @@ function App() {
                         <input aria-label="直线修正" type="checkbox" checked={draft.performance.angleSnapping} onChange={(event) => updateDraft((current) => ({ ...current, performance: { ...current.performance, angleSnapping: event.target.checked } }))} />
                         <i />
                       </label>
-                      <section className="sensor-calibration-card">
-                        <div><strong>表面感应</strong><span>低档更快停止追踪；改变档位会恢复标准表面校准</span></div>
-                        <div className="lift-off-options" role="group" aria-label="抬升距离">
-                          {(['low', 'high'] as const).map((distance) => (
-                            <button
-                              key={distance}
-                              type="button"
-                              className={draft.sensor.liftOffDistance === distance ? 'selected' : ''}
-                              aria-label={`${distance === 'low' ? '低' : '高'}抬升距离`}
-                              aria-pressed={draft.sensor.liftOffDistance === distance}
-                              onClick={() => updateDraft((current) => ({ ...current, sensor: { liftOffDistance: distance } }))}
-                            >{distance === 'low' ? '低' : '高'}<small>{distance === 'low' ? '更早停止' : '更高容差'}</small></button>
-                          ))}
-                        </div>
-                        <button
-                          type="button"
-                          className="calibration-reset"
-                          aria-label="恢复标准表面校准"
-                          disabled={busy || dirty}
-                          onClick={() => void resetSurfaceCalibration()}
-                        >恢复标准校准</button>
-                      </section>
                     </div>
                   </div>
                 </div>
               </section>
+              </div>
 
+              <div
+                id="panel-lighting"
+                role="tabpanel"
+                aria-labelledby="tab-lighting"
+                className={`tab-panel ${activeTab === 'lighting' ? 'is-active' : ''}`}
+                inert={activeTab !== 'lighting'}
+              >
               <section
                 className="control-card lighting-card"
                 data-mode={ledEditorMode}
@@ -792,7 +972,15 @@ function App() {
                   </div>
                 </div>
               </section>
+              </div>
 
+              <div
+                id="panel-buttons"
+                role="tabpanel"
+                aria-labelledby="tab-buttons"
+                className={`tab-panel ${activeTab === 'buttons' ? 'is-active' : ''}`}
+                inert={activeTab !== 'buttons'}
+              >
               <section className="control-card buttons-card">
                 <div className="card-heading">
                   <div><span className="card-index">04</span><div><h3>按键映射</h3><p>支持鼠标动作和单个键盘按键</p></div></div>
@@ -802,27 +990,40 @@ function App() {
                   <aside className="button-source-panel" aria-label="鼠标实体按键">
                     <div className="settings-panel-heading"><strong>实体按键</strong><span>选择要修改的按键</span></div>
                     <div className="button-source-list">
-                      {draft.buttons.map((button, index) => (
-                        <button
-                          key={`${button.sourceCode}-${index}`}
-                          type="button"
-                          className={selectedButtonIndex === index ? 'selected' : ''}
-                          aria-label={`编辑${button.sourceLabel}映射`}
-                          aria-pressed={selectedButtonIndex === index}
-                          onClick={() => selectButtonMapping(index, button.action.kind)}
-                        ><b>{String(index + 1).padStart(2, '0')}</b><span>{button.sourceLabel}</span><em>{button.action.label}</em></button>
-                      ))}
+                      {draft.buttons.map((button, index) => {
+                        const locked = button.sourceCode === PRIMARY_BUTTON_SOURCE_CODE
+                        return (
+                          <button
+                            key={`${button.sourceCode}-${index}`}
+                            type="button"
+                            className={`${selectedButtonIndex === index ? 'selected' : ''}${locked ? ' is-locked' : ''}`}
+                            aria-label={`编辑${button.sourceLabel}映射`}
+                            aria-pressed={selectedButtonIndex === index}
+                            onClick={() => selectButtonMapping(index, button.action.kind)}
+                          ><b>{String(index + 1).padStart(2, '0')}</b><span>{button.sourceLabel}</span><em>{button.action.label}</em></button>
+                        )
+                      })}
                     </div>
                   </aside>
                   {selectedButton && (
                     <div className="settings-editor mapping-editor">
                       <div className="mapping-editor-heading">
-                        <div><span>正在编辑</span><strong>{selectedButton.sourceLabel}</strong></div>
-                        <div className="mapping-current"><span>当前功能</span><strong>{selectedButton.action.label}</strong>{selectedButton.action.kind === 'unknown' && <em>保留</em>}</div>
+                        <div><span>{isPrimaryButtonLocked ? '系统保留' : '正在编辑'}</span><strong>{selectedButton.sourceLabel}</strong></div>
+                        <div className="mapping-current">
+                          <span>当前功能</span><strong>{selectedButton.action.label}</strong>
+                          {selectedButton.action.kind === 'unknown' && <em>保留</em>}
+                          {isPrimaryButtonLocked && <em>固定</em>}
+                        </div>
                       </div>
+                      {isPrimaryButtonLocked && (
+                        <div className="mapping-lock-notice" role="status">
+                          <i aria-hidden="true" />
+                          <div><strong>左键已锁定</strong><span>为确保设备始终可用，主要点击不能重新映射。</span></div>
+                        </div>
+                      )}
                       <div className="mapping-tabs" role="tablist" aria-label="映射功能分类">
-                        <button type="button" role="tab" aria-selected={buttonActionGroup === 'mouse'} className={buttonActionGroup === 'mouse' ? 'selected' : ''} onClick={() => setButtonActionGroup('mouse')}>鼠标动作</button>
-                        <button type="button" role="tab" aria-selected={buttonActionGroup === 'keyboard'} className={buttonActionGroup === 'keyboard' ? 'selected' : ''} onClick={() => setButtonActionGroup('keyboard')}>键盘按键</button>
+                        <button type="button" role="tab" disabled={isPrimaryButtonLocked} aria-selected={buttonActionGroup === 'mouse'} className={buttonActionGroup === 'mouse' ? 'selected' : ''} onClick={() => setButtonActionGroup('mouse')}>鼠标动作</button>
+                        <button type="button" role="tab" disabled={isPrimaryButtonLocked} aria-selected={buttonActionGroup === 'keyboard'} className={buttonActionGroup === 'keyboard' ? 'selected' : ''} onClick={() => setButtonActionGroup('keyboard')}>键盘按键</button>
                       </div>
                       <div className={`mapping-action-grid ${buttonActionGroup === 'keyboard' ? 'keyboard-actions' : ''}`} role="tabpanel">
                         {BUTTON_ACTIONS.filter((action) => buttonActionGroup === 'keyboard' ? action.kind === 'keyboard' : action.kind !== 'keyboard').map((action) => {
@@ -831,6 +1032,7 @@ function App() {
                             <button
                               key={actionValue(action)}
                               type="button"
+                              disabled={isPrimaryButtonLocked}
                               className={selected ? 'selected' : ''}
                               aria-label={`映射为${action.label}`}
                               aria-pressed={selected}
@@ -843,6 +1045,113 @@ function App() {
                   )}
                 </div>
               </section>
+              </div>
+
+              <div
+                id="panel-calibration"
+                role="tabpanel"
+                aria-labelledby="tab-calibration"
+                className={`tab-panel ${activeTab === 'calibration' ? 'is-active' : ''}`}
+                inert={activeTab !== 'calibration'}
+              >
+                <section className="control-card calibration-card">
+                  <div className="card-heading">
+                    <div><span className="card-index">04</span><div><h3>表面校准</h3><p>控制传感器离开桌面后的停止追踪距离</p></div></div>
+                    <span className="card-tag">SENSOR / LOD</span>
+                  </div>
+                  <div className="calibration-workbench">
+                    <div className="calibration-radar" aria-hidden="true">
+                      <span /><span /><span />
+                      <i />
+                      <b>AIMPOINT<br />36K</b>
+                    </div>
+                    <section className="sensor-calibration-card">
+                      <div><strong>抬升距离</strong><span>低档更快停止追踪；改变档位会恢复标准表面校准</span></div>
+                      <div className="lift-off-options" role="group" aria-label="抬升距离">
+                        {(['low', 'high'] as const).map((distance) => (
+                          <button
+                            key={distance}
+                            type="button"
+                            className={draft.sensor.liftOffDistance === distance ? 'selected' : ''}
+                            aria-label={`${distance === 'low' ? '低' : '高'}抬升距离`}
+                            aria-pressed={draft.sensor.liftOffDistance === distance}
+                            onClick={() => updateDraft((current) => ({ ...current, sensor: { liftOffDistance: distance } }))}
+                          >{distance === 'low' ? '低' : '高'}<small>{distance === 'low' ? '更早停止' : '更高容差'}</small></button>
+                        ))}
+                      </div>
+                      <div className="calibration-warning">
+                        <b>安全校准</b>
+                        <p>仅恢复设备的标准表面参数，不访问 DFU，也不会修改当前抬升距离。</p>
+                      </div>
+                      <button
+                        type="button"
+                        className="calibration-reset"
+                        aria-label="恢复标准表面校准"
+                        disabled={busy || dirty}
+                        onClick={() => void resetSurfaceCalibration()}
+                      >恢复标准校准</button>
+                    </section>
+                  </div>
+                </section>
+              </div>
+
+              <div
+                id="panel-battery"
+                role="tabpanel"
+                aria-labelledby="tab-battery"
+                className={`tab-panel ${activeTab === 'battery' ? 'is-active' : ''}`}
+                inert={activeTab !== 'battery'}
+              >
+                <section className="control-card battery-page-card">
+                  <div className="card-heading">
+                    <div><span className="card-index">05</span><div><h3>电池状态</h3><p>无线连接的剩余电量与充电信息</p></div></div>
+                    <span className="card-tag">LIVE STATUS</span>
+                  </div>
+                  <div className="battery-workbench">
+                    <div
+                      className="battery-gauge"
+                      style={{ '--battery-percent': `${battery?.percentage ?? 0}%` } as CSSProperties}
+                      role="img"
+                      aria-label={battery ? `剩余电量 ${battery.percentage}%` : '没有可用的电量信息'}
+                    >
+                      <div><strong>{battery?.percentage ?? '—'}<small>{battery ? '%' : ''}</small></strong><span>{battery?.charging ? '正在充电' : battery ? '电池供电' : '读取不可用'}</span></div>
+                    </div>
+                    <div className="battery-data-grid">
+                      <div><span>连接模式</span><strong>{deviceDefinition?.connection === 'receiver' ? '无线接收器' : '有线设备'}</strong><small>当前设备链路</small></div>
+                      <div><span>充电状态</span><strong>{battery?.charging ? 'CHARGING' : battery ? 'DISCHARGING' : 'UNKNOWN'}</strong><small>{battery?.charging ? '设备正在接收电源' : '由设备报告'}</small></div>
+                      <div><span>采样来源</span><strong>HID REPORT</strong><small>连接或重新读取时刷新</small></div>
+                      <div><span>电量灯效</span><strong>{draft.led.mode === 6 ? 'ENABLED' : 'DISABLED'}</strong><small>可在灯光页切换</small></div>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <div
+                id="panel-firmware"
+                role="tabpanel"
+                aria-labelledby="tab-firmware"
+                className={`tab-panel ${activeTab === 'firmware' ? 'is-active' : ''}`}
+                inert={activeTab !== 'firmware'}
+              >
+                <section className="control-card firmware-card">
+                  <div className="card-heading">
+                    <div><span className="card-index">06</span><div><h3>固件与兼容性</h3><p>只读显示设备报告的版本信息</p></div></div>
+                    <span className="card-tag">READ ONLY</span>
+                  </div>
+                  <div className="firmware-workbench">
+                    <div className="firmware-device-mark" aria-hidden="true"><i /><span>FW</span></div>
+                    <div className="firmware-details">
+                      <div><span>鼠标固件</span><strong>{profile ? firmwareLabel(profile.primaryFirmware) : '—'}</strong><small>PRIMARY DEVICE</small></div>
+                      <div><span>接收器固件</span><strong>{profile ? firmwareLabel(profile.secondaryFirmware) : '—'}</strong><small>WIRELESS RECEIVER</small></div>
+                      <div><span>设备接口</span><strong>{diagnostics ? `VID ${diagnostics.vendorId.toString(16).padStart(4, '0')} / PID ${diagnostics.productId.toString(16).padStart(4, '0')}` : '—'}</strong><small>USB IDENTIFIER</small></div>
+                    </div>
+                    <div className="firmware-notice">
+                      <span>!</span>
+                      <div><strong>固件更新未开放</strong><p>ROGDRV Web 不进入 DFU 模式，也不写入固件。请使用官方工具完成固件更新。</p></div>
+                    </div>
+                  </div>
+                </section>
+              </div>
 
               <section className="diagnostics">
                 <button type="button" onClick={() => setShowLogs((current) => !current)}>
@@ -860,6 +1169,7 @@ function App() {
                 )}
               </section>
             </div>
+            </>
           )}
 
           <footer>

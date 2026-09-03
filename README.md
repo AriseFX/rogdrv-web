@@ -4,6 +4,8 @@
 
 A browser-native, open-source configurator for ASUS ROG gaming mice, built with React, TypeScript, and WebHID.
 
+> **Unofficial community project:** ROGDRV Web is not affiliated with, endorsed by, or supported by ASUS or ROG. Product and brand names are used only to describe hardware compatibility.
+
 [Open ROGDRV Web](https://arisefx.github.io/rogdrv-web/) · Desktop Chromium browser required
 
 ROGDRV Web talks directly to supported hardware from a Chromium browser. It does not require a background daemon or an account, and configuration data stays in the browser session unless you explicitly write changes to the mouse's onboard memory.

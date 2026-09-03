@@ -26,6 +26,10 @@ import {
   parseProfileInfo,
 } from './codec'
 import type { ProfileSnapshot, QueryTransport } from './types'
+import {
+  PRIMARY_BUTTON_ACTION_CODE,
+  PRIMARY_BUTTON_SOURCE_CODE,
+} from './constants'
 
 const sameColor = (
   left: ProfileSnapshot['led']['color'],
@@ -94,6 +98,20 @@ const verificationFailures = (
 }
 
 const errorMessage = (cause: unknown) => cause instanceof Error ? cause.message : String(cause)
+
+const assertPrimaryButtonLocked = (profile: ProfileSnapshot) => {
+  const primaryButtons = profile.buttons.filter(
+    (button) => button.sourceCode === PRIMARY_BUTTON_SOURCE_CODE,
+  )
+  const [primaryButton] = primaryButtons
+  if (
+    primaryButtons.length !== 1
+    || primaryButton.action.kind !== 'mouse'
+    || primaryButton.action.code !== PRIMARY_BUTTON_ACTION_CODE
+  ) {
+    throw new Error('左键是系统保留按键，不能重新映射')
+  }
+}
 
 export class AsusMouse {
   private readonly transport: QueryTransport
@@ -176,6 +194,7 @@ export class AsusMouse {
     if (!Number.isInteger(activeProfileIndex) || activeProfileIndex < 0 || activeProfileIndex > 4) {
       throw new Error('恢复的活动配置档无效')
     }
+    profiles.forEach(assertPrimaryButtonLocked)
     for (let index = 0; index < 5; index += 1) {
       const current = await this.switchProfile(index)
       await this.applyChangesSafely(current, profiles[index])
@@ -184,6 +203,7 @@ export class AsusMouse {
   }
 
   async applyChangesSafely(current: ProfileSnapshot, draft: ProfileSnapshot) {
+    assertPrimaryButtonLocked(draft)
     let actual: ProfileSnapshot | null = null
     let verificationFailed = false
     try {
@@ -218,6 +238,7 @@ export class AsusMouse {
   }
 
   async applyChanges(current: ProfileSnapshot, draft: ProfileSnapshot) {
+    assertPrimaryButtonLocked(draft)
     if (current.profileIndex !== draft.profileIndex) {
       throw new Error('配置档在编辑期间发生了变化，请重新读取设备')
     }

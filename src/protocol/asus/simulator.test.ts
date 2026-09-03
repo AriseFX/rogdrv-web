@@ -32,7 +32,7 @@ describe('VirtualAsusDevice', () => {
     draft.buttons[3].action = BUTTON_ACTIONS.find(
       (action) => action.kind === 'keyboard' && action.label === 'A',
     )!
-    draft.buttons[0].action = BUTTON_ACTIONS.find((action) => action.kind === 'disabled')!
+    draft.buttons[2].action = BUTTON_ACTIONS.find((action) => action.kind === 'disabled')!
     draft.buttons[1].action = BUTTON_ACTIONS.find(
       (action) => action.kind === 'mouse' && action.label === '左键',
     )!
@@ -50,7 +50,7 @@ describe('VirtualAsusDevice', () => {
       sensor: draft.sensor,
       buttons: expect.arrayContaining([
         expect.objectContaining({
-          sourceCode: draft.buttons[0].sourceCode,
+          sourceCode: draft.buttons[2].sourceCode,
           action: expect.objectContaining({ kind: 'disabled' }),
         }),
         expect.objectContaining({
