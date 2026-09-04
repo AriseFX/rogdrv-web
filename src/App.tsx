@@ -399,7 +399,7 @@ function App() {
     rainbow: '颜色由灯效自动循环',
     solid: ledColorHex.toUpperCase(),
   }[ledEditorMode]
-  const activeFeature = FEATURE_TABS.find((tab) => tab.id === activeTab) ?? FEATURE_TABS[0]
+  const activeFeature = FEATURE_TABS.find((tab) => tab.id === activeTab)!
 
   return (
     <div className="app-shell" data-tab={activeTab}>

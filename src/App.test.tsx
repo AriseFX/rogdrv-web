@@ -194,6 +194,14 @@ describe('demo mode', () => {
     )
     expect(screen.queryByText('左键已锁定')).not.toBeInTheDocument()
     expect(screen.getByRole('tab', { name: '键盘按键' })).toBeEnabled()
+
+    for (const [tabName, panelId] of [
+      [/灯光.*LIGHTING/, '#panel-lighting'],
+      [/校准.*CALIBRATION/, '#panel-calibration'],
+    ] as const) {
+      await user.click(screen.getByRole('tab', { name: tabName }))
+      expect(document.querySelector(panelId)).toHaveClass('is-active')
+    }
   })
 
   it('uses the styled onboard-profile menu and supports keyboard dismissal', async () => {
@@ -209,12 +217,37 @@ describe('demo mode', () => {
     expect(screen.getByRole('listbox', { name: '选择板载配置文件' })).toHaveClass(
       'profile-picker-menu',
     )
-    expect(screen.getByRole('option', { name: '切换到配置文件 1，当前启用' }))
-      .toHaveAttribute('aria-selected', 'true')
+    const profileOneOption = screen.getByRole('option', {
+      name: '切换到配置文件 1，当前启用',
+    })
+    const profileTwoOption = screen.getByRole('option', { name: '切换到配置文件 2' })
+    const profileFiveOption = screen.getByRole('option', { name: '切换到配置文件 5' })
+    expect(profileOneOption).toHaveAttribute('aria-selected', 'true')
+    await waitFor(() => expect(profileOneOption).toHaveFocus())
 
+    await user.keyboard('{ArrowDown}')
+    expect(profileTwoOption).toHaveFocus()
+    await user.keyboard('{ArrowUp}')
+    expect(profileOneOption).toHaveFocus()
+    await user.keyboard('{End}')
+    expect(profileFiveOption).toHaveFocus()
+    await user.keyboard('{Home}')
+    expect(profileOneOption).toHaveFocus()
+
+    fireEvent.pointerDown(document.body)
+    expect(screen.queryByRole('listbox', { name: '选择板载配置文件' })).not.toBeInTheDocument()
+
+    await user.click(trigger)
+    await waitFor(() => expect(screen.getByRole('option', {
+      name: '切换到配置文件 1，当前启用',
+    })).toHaveFocus())
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('listbox', { name: '选择板载配置文件' })).not.toBeInTheDocument()
     expect(trigger).toHaveFocus()
+
+    await user.click(trigger)
+    await user.click(screen.getByRole('option', { name: '切换到配置文件 1，当前启用' }))
+    expect(screen.queryByRole('listbox', { name: '选择板载配置文件' })).not.toBeInTheDocument()
 
     await user.click(trigger)
     await user.click(screen.getByRole('option', { name: '切换到配置文件 2' }))
@@ -223,7 +256,7 @@ describe('demo mode', () => {
     })).toBeInTheDocument()
   })
 
-  it('edits and discards every exposed control and shows protocol diagnostics', async () => {
+  it('edits and discards performance and calibration controls', async () => {
     window.history.replaceState({}, '', '/?demo=1')
     const { default: App } = await import('./App')
     const user = userEvent.setup()
@@ -244,7 +277,22 @@ describe('demo mode', () => {
     await user.click(screen.getByRole('button', { name: '高抬升距离' }))
     expect(screen.getByRole('button', { name: '高抬升距离' })).toHaveAttribute('aria-pressed', 'true')
     await user.click(screen.getByRole('button', { name: '恢复标准表面校准' }))
-    await user.click(screen.getByRole('button', { name: 'Logo 灯效模式 呼吸' }))
+    expect(screen.getByText(/保存或放弃更改后/)).toBeInTheDocument()
+    const applyButton = screen.getByRole('button', { name: '应用到设备' })
+    expect(screen.getByRole('banner')).toContainElement(applyButton)
+    expect(document.querySelector('.save-dock')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '放弃' }))
+    expect(screen.queryByText(/保存或放弃更改后/)).not.toBeInTheDocument()
+    expect(screen.getByLabelText('DPI 档位 2 数值')).toHaveValue(800)
+  })
+
+  it('edits and discards lighting controls', async () => {
+    window.history.replaceState({}, '', '/?demo=1')
+    const { default: App } = await import('./App')
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Logo 灯效模式 呼吸' }))
     expect(screen.getByRole('button', { name: 'Logo 灯效模式 呼吸' })).toHaveAttribute('aria-pressed', 'true')
     await user.click(screen.getByRole('button', { name: 'Logo 灯效模式 彩虹' }))
     expect(screen.queryByLabelText('Logo 灯效颜色')).not.toBeInTheDocument()
@@ -254,7 +302,20 @@ describe('demo mode', () => {
     expect(screen.getByLabelText('Logo 灯效颜色')).toHaveValue('#3478ff')
     fireEvent.change(screen.getByLabelText('Logo 灯效颜色'), { target: { value: '#123456' } })
     fireEvent.change(screen.getByLabelText('Logo 灯效亮度'), { target: { value: '75' } })
-    await user.click(screen.getByRole('button', { name: '编辑侧键 · 前进映射' }))
+
+    expect(screen.getAllByText('#123456')).toHaveLength(2)
+    expect(screen.getByText('75%')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '放弃' }))
+    expect(screen.queryByText(/保存或放弃更改后/)).not.toBeInTheDocument()
+  })
+
+  it('edits and discards button mappings', async () => {
+    window.history.replaceState({}, '', '/?demo=1')
+    const { default: App } = await import('./App')
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: '编辑侧键 · 前进映射' }))
     await user.click(screen.getByRole('tab', { name: '键盘按键' }))
     await user.click(screen.getByRole('button', { name: '映射为A' }))
     expect(screen.getByRole('button', { name: '映射为A' })).toHaveAttribute('aria-pressed', 'true')
@@ -266,16 +327,17 @@ describe('demo mode', () => {
     expect(screen.getByRole('tab', { name: '鼠标动作' })).toHaveAttribute('aria-selected', 'true')
 
     expect(screen.getByText(/保存或放弃更改后/)).toBeInTheDocument()
-    expect(screen.getAllByText('#123456')).toHaveLength(2)
-    expect(screen.getByText('75%')).toBeInTheDocument()
-    const applyButton = screen.getByRole('button', { name: '应用到设备' })
-    expect(screen.getByRole('banner')).toContainElement(applyButton)
-    expect(document.querySelector('.save-dock')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '放弃' }))
     expect(screen.queryByText(/保存或放弃更改后/)).not.toBeInTheDocument()
-    expect(screen.getByLabelText('DPI 档位 2 数值')).toHaveValue(800)
+  })
 
-    await user.click(screen.getByRole('button', { name: /设备诊断/ }))
+  it('shows and hides protocol diagnostics', async () => {
+    window.history.replaceState({}, '', '/?demo=1')
+    const { default: App } = await import('./App')
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: /设备诊断/ }))
     expect(screen.getByText('0b05:1a70')).toBeInTheDocument()
     expect(screen.getByText(/演示模式：未连接真实硬件/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /设备诊断/ }))
@@ -856,6 +918,54 @@ describe('WebHID connection', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: /设备诊断/ }))
     expect(screen.getByText('尚无通信记录')).toBeInTheDocument()
     expect(screen.getAllByText('—')).toHaveLength(4)
+  })
+
+  it('renders connected fallbacks when profile metadata and battery are unavailable', async () => {
+    const draft = await new AsusMouse(new VirtualAsusDevice()).readCurrentProfile()
+    vi.doMock('./hooks/useAsusMouse', () => ({
+      useAsusMouse: () => ({
+        connectionState: 'connected',
+        connected: true,
+        deviceDefinition: null,
+        profile: null,
+        draft,
+        setDraft: vi.fn(),
+        diagnostics: null,
+        battery: null,
+        logs: [],
+        error: null,
+        busy: false,
+        dirty: false,
+        connect: vi.fn(),
+        reconnect: vi.fn(),
+        disconnect: vi.fn(),
+        switchProfile: vi.fn(),
+        refresh: vi.fn(),
+        exportBackup: vi.fn(),
+        restoreBackup: vi.fn(),
+        resetSurfaceCalibration: vi.fn(),
+        apply: vi.fn(),
+        discard: vi.fn(),
+      }),
+    }))
+    const { default: App } = await import('./App')
+    const user = userEvent.setup()
+    render(<App />)
+
+    expect(screen.getByText(/配置文件 —/)).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: /电量.*BATTERY/ }))
+    expect(document.querySelector('#panel-battery')).toHaveClass('is-active')
+    expect(screen.getByRole('img', { name: '没有可用的电量信息' })).toHaveTextContent(
+      '—读取不可用',
+    )
+    expect(screen.getByText('UNKNOWN')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: /固件更新.*FIRMWARE/ }))
+    expect(document.querySelector('#panel-firmware')).toHaveClass('is-active')
+    expect(document.querySelector('#panel-firmware')).toHaveTextContent('鼠标固件—PRIMARY DEVICE')
+    expect(document.querySelector('#panel-firmware')).toHaveTextContent(
+      '接收器固件—WIRELESS RECEIVER',
+    )
   })
 
   it('resets the UI even if closing the device fails during manual disconnect', async () => {
